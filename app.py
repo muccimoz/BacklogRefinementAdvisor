@@ -357,7 +357,7 @@ def delete_backlog_item(item_id: str):
 def run_gemini_evaluation(title, description, acceptance_criteria,
                           dependencies, assumptions, notes) -> tuple[str, str, str]:
     genai.configure(api_key=st.secrets["gemini_api_key"])
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    model = genai.GenerativeModel("gemini-2.0-flash")
 
     fields = [f"Title: {title}"]
     if description:          fields.append(f"Description:\n{description}")
