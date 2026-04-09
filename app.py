@@ -451,7 +451,7 @@ THRESHOLD_ZONE: [Too Vague / Refinement Zone / Over-Refined]
 
 [Only include content here if any of the 5 mistakes are clearly evident. For each detected mistake: state the mistake name and one sentence explaining why it was flagged. If none are detected, write: None detected.]"""
 
-    response    = client.models.generate_content(model="gemini-1.5-flash", contents=prompt)
+    response    = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
     text        = response.text.strip()
 
     clarity = "Unknown"
