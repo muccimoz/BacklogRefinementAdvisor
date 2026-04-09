@@ -1,7 +1,7 @@
 import time
 import streamlit as st
 import httpx
-import google.generativeai as genai
+from google import genai
 from datetime import date as date_type
 from supabase import create_client, Client
 
@@ -356,8 +356,7 @@ def delete_backlog_item(item_id: str):
 # ── Gemini evaluation ──────────────────────────────────────────────────────────
 def run_gemini_evaluation(title, description, acceptance_criteria,
                           dependencies, assumptions, notes) -> tuple[str, str, str]:
-    genai.configure(api_key=st.secrets["gemini_api_key"])
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    client = genai.Client(api_key=st.secrets["gemini_api_key"])
 
     fields = [f"Title: {title}"]
     if description:          fields.append(f"Description:\n{description}")
@@ -452,7 +451,7 @@ THRESHOLD_ZONE: [Too Vague / Refinement Zone / Over-Refined]
 
 [Only include content here if any of the 5 mistakes are clearly evident. For each detected mistake: state the mistake name and one sentence explaining why it was flagged. If none are detected, write: None detected.]"""
 
-    response    = model.generate_content(prompt)
+    response    = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
     text        = response.text.strip()
 
     clarity = "Unknown"
