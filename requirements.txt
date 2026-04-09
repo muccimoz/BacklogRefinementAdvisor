@@ -1,4 +1,4 @@
 streamlit
 supabase
 httpx
-google-generativeai
+google-genai
