@@ -1,6 +1,8 @@
 import time
 import streamlit as st
 import httpx
+import google.generativeai as genai
+from datetime import date as date_type
 from supabase import create_client, Client
 
 st.set_page_config(
@@ -39,7 +41,6 @@ def get_supabase() -> Client:
 
 # ── Token refresh helpers ──────────────────────────────────────────────────────
 def _raw_token_refresh(refresh_token: str) -> dict | None:
-    """Exchange a refresh token via Supabase REST API directly."""
     try:
         url  = f"{st.secrets['supabase_url']}/auth/v1/token?grant_type=refresh_token"
         hdrs = {"apikey": st.secrets["supabase_anon_key"], "Content-Type": "application/json"}
@@ -53,7 +54,6 @@ def _raw_token_refresh(refresh_token: str) -> dict | None:
 
 
 def _parse_expires_at(data: dict) -> float:
-    """Compute expires_at from expires_in — avoids trusting the library's value."""
     expires_in = data.get("expires_in", 3600)
     return time.time() + float(expires_in or 3600)
 
@@ -64,9 +64,6 @@ def restore_session() -> bool:
 
     expires_at = st.session_state.get("expires_at", 0)
 
-    # Proactively refresh if token is expired or expiry is unknown.
-    # expires_at defaults to 0 after a server-session restore (not persisted
-    # to user_sessions), so a refresh always runs after browser reload.
     if time.time() >= expires_at - 60:
         data = _raw_token_refresh(st.session_state.get("refresh_token", ""))
         if not (data and data.get("access_token")):
@@ -106,9 +103,10 @@ def clear_session():
     except Exception:
         pass
     for key in ["access_token", "refresh_token", "expires_at", "user_id", "user_email",
-                "current_team_id", "current_team_name", "page", "supabase_client", "session_id"]:
+                "current_team_id", "current_team_name",
+                "current_session_id", "current_session_name",
+                "page", "supabase_client", "session_id"]:
         st.session_state.pop(key, None)
-    # Clear any widget buffers so unsaved edits don't survive a logout
     for key in list(st.session_state.keys()):
         if key.startswith("_buf_"):
             del st.session_state[key]
@@ -142,6 +140,10 @@ def load_server_session(sid: str) -> bool:
                 st.session_state["current_team_id"] = row["current_team_id"]
             if row.get("current_team_name"):
                 st.session_state["current_team_name"] = row["current_team_name"]
+            if row.get("current_session_id"):
+                st.session_state["current_session_id"] = row["current_session_id"]
+            if row.get("current_session_name"):
+                st.session_state["current_session_name"] = row["current_session_name"]
             return True
         return False
     except Exception:
@@ -154,11 +156,13 @@ def update_server_session():
         return
     try:
         db().table("user_sessions").update({
-            "access_token":      st.session_state["access_token"],
-            "refresh_token":     st.session_state["refresh_token"],
-            "current_page":      st.session_state.get("page", "teams"),
-            "current_team_id":   st.session_state.get("current_team_id"),
-            "current_team_name": st.session_state.get("current_team_name"),
+            "access_token":         st.session_state["access_token"],
+            "refresh_token":        st.session_state["refresh_token"],
+            "current_page":         st.session_state.get("page", "teams"),
+            "current_team_id":      st.session_state.get("current_team_id"),
+            "current_team_name":    st.session_state.get("current_team_name"),
+            "current_session_id":   st.session_state.get("current_session_id"),
+            "current_session_name": st.session_state.get("current_session_name"),
         }).eq("id", sid).execute()
     except Exception:
         pass
@@ -294,6 +298,178 @@ def delete_team(team_id: str):
     db().table("teams").delete().eq("id", team_id).execute()
 
 
+def get_refinement_sessions(team_id: str) -> list:
+    try:
+        r = db().table("refinement_sessions").select("id, name, created_at").eq(
+            "team_id", team_id
+        ).order("created_at", desc=True).execute()
+        return r.data or []
+    except Exception:
+        return []
+
+
+def create_refinement_session(team_id: str, name: str):
+    db().table("refinement_sessions").insert({
+        "team_id": team_id,
+        "name":    name,
+    }).execute()
+
+
+def update_refinement_session(session_id: str, name: str):
+    db().table("refinement_sessions").update({"name": name}).eq("id", session_id).execute()
+
+
+def delete_refinement_session(session_id: str):
+    db().table("refinement_sessions").delete().eq("id", session_id).execute()
+
+
+def get_backlog_items(session_id: str) -> list:
+    try:
+        r = db().table("backlog_items").select("*").eq(
+            "session_id", session_id
+        ).order("created_at", desc=True).execute()
+        return r.data or []
+    except Exception:
+        return []
+
+
+def create_backlog_item(session_id, title, description, acceptance_criteria,
+                        dependencies, assumptions, notes, clarity, zone, gemini_output):
+    db().table("backlog_items").insert({
+        "session_id":          session_id,
+        "title":               title,
+        "description":         description or None,
+        "acceptance_criteria": acceptance_criteria or None,
+        "dependencies":        dependencies or None,
+        "assumptions":         assumptions or None,
+        "notes":               notes or None,
+        "clarity_gradient":    clarity,
+        "threshold_zone":      zone,
+        "gemini_output":       gemini_output,
+    }).execute()
+
+
+def delete_backlog_item(item_id: str):
+    db().table("backlog_items").delete().eq("id", item_id).execute()
+
+
+# ── Gemini evaluation ──────────────────────────────────────────────────────────
+def run_gemini_evaluation(title, description, acceptance_criteria,
+                          dependencies, assumptions, notes) -> tuple[str, str, str]:
+    genai.configure(api_key=st.secrets["gemini_api_key"])
+    model = genai.GenerativeModel("gemini-1.5-flash")
+
+    fields = [f"Title: {title}"]
+    if description:          fields.append(f"Description:\n{description}")
+    if acceptance_criteria:  fields.append(f"Acceptance Criteria:\n{acceptance_criteria}")
+    if dependencies:         fields.append(f"Dependencies: {dependencies}")
+    if assumptions:          fields.append(f"Assumptions: {assumptions}")
+    if notes:                fields.append(f"Notes:\n{notes}")
+    item_text = "\n\n".join(fields)
+
+    prompt = f"""You are an expert Agile coach evaluating a backlog item for sprint readiness.
+
+Evaluate the following backlog item against Mike Cohn's Product Backlog Refinement Checklist.
+
+BACKLOG ITEM:
+{item_text}
+
+CHECKLIST (14 items across 4 groups):
+
+1. Shared Understanding
+   a. The team can explain the item in their own words
+   b. The team understands the problem this item is intended to solve
+   c. The team understands what must be true for this item to be considered complete
+   d. The team agrees on what is included and what is not included
+
+2. Acceptance Boundaries
+   a. The major acceptance criteria have been identified
+   b. Obvious edge cases have been discussed
+   c. The team understands the key assumptions behind this item
+
+3. Size and Sprint Fit
+   a. The item is small enough to be completed within a sprint
+   b. If the item is too large, the team knows how it will be split
+   c. The item is comparable in size to work the team has successfully completed before
+   d. The team feels comfortable committing to this item
+
+4. Risks and Unknowns
+   a. Unknowns that could significantly increase scope have been resolved
+   b. Dependencies have been identified
+   c. Remaining uncertainty feels manageable within the sprint
+
+CLARITY GRADIENT — choose one based on these criteria:
+- High Clarity: next sprint or two, clear purpose, acceptance criteria defined, sprint-threatening unknowns resolved, small enough to fit in a sprint
+- Moderate Clarity: rough understanding, likely candidate for refinement soon, some unknowns still open
+- Low Clarity: rough ideas, minimal descriptions, may change or disappear, not yet refined
+
+REFINEMENT THRESHOLD — choose one based on these criteria:
+- Too Vague: major unanswered questions, high likelihood of surprises, team cannot commit responsibly
+- Refinement Zone: enough clarity to fit in a sprint, major risks addressed, minor unknowns acceptable
+- Over-Refined: trying to eliminate all uncertainty, refining work far in advance, spending more time refining than delivering
+
+COMMON MISTAKES — only flag if clearly evident from the submission:
+1. Refining Until Nothing Is Uncertain
+2. Refining Too Far Ahead
+3. Refining Too Late
+4. Turning Refinement Into Design
+5. Including Everyone Every Time
+
+Respond using EXACTLY this format (do not deviate):
+
+CLARITY_GRADIENT: [High Clarity / Moderate Clarity / Low Clarity]
+THRESHOLD_ZONE: [Too Vague / Refinement Zone / Over-Refined]
+
+---
+
+## Overall Assessment
+
+[2-3 sentences summarising the item's readiness for sprint commitment]
+
+## Clarity Gradient: [rating]
+
+[Explain why this rating was assigned, referencing specific aspects of the submission]
+
+## Refinement Threshold: [zone]
+
+[Explain why this zone was assigned]
+
+## Checklist Analysis
+
+### 1. Shared Understanding
+[For each of the 4 items: one line stating whether it is satisfied, a gap, or unclear based on what was submitted. For any gaps, add 1-2 clarifying questions indented beneath it.]
+
+### 2. Acceptance Boundaries
+[Same format as above]
+
+### 3. Size and Sprint Fit
+[Same format as above]
+
+### 4. Risks and Unknowns
+[Same format as above]
+
+## Common Mistakes Detected
+
+[Only include content here if any of the 5 mistakes are clearly evident. For each detected mistake: state the mistake name and one sentence explaining why it was flagged. If none are detected, write: None detected.]"""
+
+    response    = model.generate_content(prompt)
+    text        = response.text.strip()
+
+    clarity = "Unknown"
+    zone    = "Unknown"
+    for line in text.split("\n")[:8]:
+        if line.startswith("CLARITY_GRADIENT:"):
+            clarity = line.replace("CLARITY_GRADIENT:", "").strip()
+        elif line.startswith("THRESHOLD_ZONE:"):
+            zone = line.replace("THRESHOLD_ZONE:", "").strip()
+
+    display_text = text
+    if "---" in text:
+        display_text = text[text.index("---") + 3:].strip()
+
+    return clarity, zone, display_text
+
+
 # ── Dialogs ────────────────────────────────────────────────────────────────────
 @st.dialog("Delete Team")
 def _dialog_delete_team(team: dict):
@@ -302,11 +478,43 @@ def _dialog_delete_team(team: dict):
     if c1.button("Yes, delete", use_container_width=True):
         delete_team(team["id"])
         if st.session_state.get("current_team_id") == team["id"]:
-            st.session_state.pop("current_team_id", None)
-            st.session_state.pop("current_team_name", None)
+            st.session_state.pop("current_team_id",      None)
+            st.session_state.pop("current_team_name",    None)
+            st.session_state.pop("current_session_id",   None)
+            st.session_state.pop("current_session_name", None)
             st.session_state["page"] = "teams"
         st.session_state["team_deleted_success"] = True
         st.session_state["team_deleted_name"]    = f"Team '{team['name']}' deleted."
+        st.rerun()
+    if c2.button("Cancel", use_container_width=True):
+        st.rerun()
+
+
+@st.dialog("Delete Session")
+def _dialog_delete_session(session: dict):
+    st.write(f"Delete **{session['name']}**? This will permanently remove the session and all its assessed items.")
+    c1, c2 = st.columns(2)
+    if c1.button("Yes, delete", use_container_width=True):
+        delete_refinement_session(session["id"])
+        if st.session_state.get("current_session_id") == session["id"]:
+            st.session_state.pop("current_session_id",   None)
+            st.session_state.pop("current_session_name", None)
+            st.session_state["page"] = "sessions"
+        st.session_state["session_deleted"]      = True
+        st.session_state["session_deleted_name"] = f"Session '{session['name']}' deleted."
+        st.rerun()
+    if c2.button("Cancel", use_container_width=True):
+        st.rerun()
+
+
+@st.dialog("Delete Item")
+def _dialog_delete_item(item: dict):
+    st.write(f"Delete **{item['title']}**? This will permanently remove the item and its assessment.")
+    c1, c2 = st.columns(2)
+    if c1.button("Yes, delete", use_container_width=True):
+        delete_backlog_item(item["id"])
+        st.session_state["item_deleted"]      = True
+        st.session_state["item_deleted_name"] = f"'{item['title']}' deleted."
         st.rerun()
     if c2.button("Cancel", use_container_width=True):
         st.rerun()
@@ -377,7 +585,6 @@ def page_login():
 def page_teams():
     st.title("Your Teams")
 
-    # Confirmation messages
     if st.session_state.pop("team_created_success", None):
         st.success(st.session_state.pop("team_created_name", "Team created."))
     if st.session_state.pop("team_deleted_success", None):
@@ -389,8 +596,8 @@ def page_teams():
 
     with st.expander("How to use this page"):
         st.markdown("""
-- Each team has its own backlog assessments and Gotchas List.
-- Click **Open** to go to the Assessment page for that team.
+- Each team has its own refinement sessions and backlog assessments.
+- Click **Open** to view and manage refinement sessions for that team.
 - Use **Add New Team** to create a separate team for each group you want to track independently.
 - Use **Rename** to update a team's name, or **Delete** to permanently remove it and all its data.
         """)
@@ -421,7 +628,7 @@ def page_teams():
             st.session_state["current_team_id"]   = team["id"]
             st.session_state["current_team_name"] = team["name"]
             st.session_state["sidebar_team_sel"]  = team["id"]
-            st.session_state["page"]              = "assessment"
+            st.session_state["page"]              = "sessions"
             st.rerun()
 
         if col_rename.button("Rename", key=f"rename_{team['id']}"):
@@ -452,10 +659,169 @@ def page_teams():
                 st.rerun()
 
 
-def page_assessment():
+def page_sessions():
     team_name = st.session_state.get("current_team_name", "Team")
-    st.title(f"Backlog Refinement — {team_name}")
-    st.info("Assessment features coming in Layer 2.")
+    st.title(f"Refinement Sessions — {team_name}")
+
+    if st.session_state.pop("session_created", None):
+        st.success(st.session_state.pop("session_created_name", "Session created."))
+    if st.session_state.pop("session_deleted", None):
+        st.success(st.session_state.pop("session_deleted_name", "Session deleted."))
+    if st.session_state.pop("session_renamed", None):
+        st.success("Session renamed.")
+
+    team_id  = st.session_state["current_team_id"]
+    sessions = get_refinement_sessions(team_id)
+
+    today        = date_type.today()
+    default_name = f"Session — {today.strftime('%b')} {today.day} {today.year}"
+
+    with st.expander("How to use this page"):
+        st.markdown("""
+- Each refinement session represents one backlog refinement meeting.
+- Click **Open** to submit and review backlog items assessed within that session.
+- Use **Add New Session** to create a session for your next refinement meeting.
+- Use **Rename** to update a session name, or **Delete** to remove it and all its items.
+        """)
+
+    with st.expander("Add New Session", expanded=(len(sessions) == 0)):
+        with st.form("add_session"):
+            name = st.text_input("Session Name", value=default_name)
+            if st.form_submit_button("Add Session"):
+                if name.strip():
+                    create_refinement_session(team_id, name.strip())
+                    st.session_state["session_created"]      = True
+                    st.session_state["session_created_name"] = f"Session '{name.strip()}' created."
+                    st.rerun()
+                else:
+                    st.warning("Please enter a session name.")
+
+    if not sessions:
+        st.info("No sessions yet. Add one above to get started.")
+        return
+
+    st.divider()
+
+    for session in sessions:
+        col_name, col_open, col_rename, col_delete = st.columns([5, 2, 2, 2])
+        col_name.write(f"**{session['name']}**")
+
+        if col_open.button("Open", key=f"open_sess_{session['id']}"):
+            st.session_state["current_session_id"]   = session["id"]
+            st.session_state["current_session_name"] = session["name"]
+            st.session_state["page"]                 = "assessment"
+            st.rerun()
+
+        if col_rename.button("Rename", key=f"rename_sess_{session['id']}"):
+            st.session_state[f"renaming_sess_{session['id']}"] = True
+            st.rerun()
+
+        if col_delete.button("Delete", key=f"delete_sess_{session['id']}"):
+            _dialog_delete_session(session)
+
+        if st.session_state.get(f"renaming_sess_{session['id']}"):
+            with st.form(f"rename_sess_form_{session['id']}"):
+                new_name = st.text_input("New name", value=session["name"])
+                c1, c2   = st.columns(2)
+                save     = c1.form_submit_button("Save")
+                cancel   = c2.form_submit_button("Cancel")
+            if save:
+                if new_name.strip():
+                    update_refinement_session(session["id"], new_name.strip())
+                    if st.session_state.get("current_session_id") == session["id"]:
+                        st.session_state["current_session_name"] = new_name.strip()
+                    st.session_state.pop(f"renaming_sess_{session['id']}", None)
+                    st.session_state["session_renamed"] = True
+                    st.rerun()
+                else:
+                    st.warning("Name cannot be empty.")
+            if cancel:
+                st.session_state.pop(f"renaming_sess_{session['id']}", None)
+                st.rerun()
+
+
+def page_assessment():
+    session_name = st.session_state.get("current_session_name", "Session")
+    team_name    = st.session_state.get("current_team_name", "Team")
+    st.title(session_name)
+    st.caption(f"Team: {team_name}")
+
+    if st.session_state.pop("item_submitted", None):
+        st.success("Assessment complete.")
+    if st.session_state.pop("item_deleted", None):
+        st.success(st.session_state.pop("item_deleted_name", "Item deleted."))
+
+    session_id = st.session_state["current_session_id"]
+    items      = get_backlog_items(session_id)
+
+    with st.expander("How to use this page"):
+        st.markdown("""
+- Enter a backlog item's details and click **Run Assessment** to get an AI evaluation.
+- Gemini evaluates the item against Mike Cohn's 14-point refinement checklist.
+- Each item receives a **Clarity Gradient** rating (High / Moderate / Low) and a
+  **Refinement Threshold** zone (Too Vague / Refinement Zone / Over-Refined).
+- Only the Title is required — the more detail you provide, the better the evaluation.
+- All assessed items for this session are shown below the form.
+        """)
+
+    with st.expander("Submit New Item for Assessment", expanded=True):
+        with st.form("assessment_form"):
+            title               = st.text_input("Title *")
+            description         = st.text_area("Description", height=100,
+                                               placeholder="What needs to be done and why (the problem being solved)")
+            acceptance_criteria = st.text_area("Acceptance Criteria", height=100,
+                                               placeholder="What must be true for this item to be considered complete")
+            dependencies        = st.text_input("Dependencies",
+                                               placeholder="Other items or systems this relies on")
+            assumptions         = st.text_input("Assumptions",
+                                               placeholder="What the team is taking as given")
+            notes               = st.text_area("Notes", height=80,
+                                              placeholder="Anything else relevant")
+            submitted           = st.form_submit_button("Run Assessment")
+
+        if submitted:
+            if not title.strip():
+                st.warning("Title is required.")
+            else:
+                with st.spinner("Evaluating with Gemini..."):
+                    try:
+                        clarity, zone, output = run_gemini_evaluation(
+                            title.strip(), description, acceptance_criteria,
+                            dependencies, assumptions, notes,
+                        )
+                        create_backlog_item(
+                            session_id, title.strip(), description, acceptance_criteria,
+                            dependencies, assumptions, notes, clarity, zone, output,
+                        )
+                        st.session_state["item_submitted"] = True
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Assessment failed: {e}")
+
+    if not items:
+        st.info("No items assessed in this session yet.")
+        return
+
+    st.divider()
+    st.subheader("Assessed Items")
+
+    for item in items:
+        clarity = item.get("clarity_gradient", "")
+        zone    = item.get("threshold_zone", "")
+        label   = f"{item['title']}   |   {clarity}   |   {zone}"
+
+        with st.expander(label):
+            c1, c2 = st.columns(2)
+            c1.markdown(f"**Clarity Gradient:** {clarity}")
+            c2.markdown(f"**Refinement Zone:** {zone}")
+            st.markdown("---")
+
+            if item.get("gemini_output"):
+                st.markdown(item["gemini_output"])
+
+            st.markdown("---")
+            if st.button("Delete this item", key=f"del_item_{item['id']}"):
+                _dialog_delete_item(item)
 
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
@@ -468,16 +834,14 @@ def show_sidebar():
             st.session_state["page"] = "teams"
             st.rerun()
 
-        # Team selector — hidden on the Teams page
         teams         = get_teams()
-        on_teams_page = st.session_state.get("page", "teams") == "teams"
+        current_page  = st.session_state.get("page", "teams")
+        on_teams_page = current_page == "teams"
 
         if teams and not on_teams_page:
             team_ids   = [t["id"] for t in teams]
             current_id = st.session_state.get("current_team_id")
 
-            # Only initialise if unset or stale — never override on every rerun
-            # (overriding here cancels the user's in-flight selection before render)
             if st.session_state.get("sidebar_team_sel") not in team_ids:
                 st.session_state["sidebar_team_sel"] = current_id or team_ids[0]
 
@@ -493,12 +857,14 @@ def show_sidebar():
             if sel_id != current_id:
                 st.session_state["current_team_id"]   = sel_id
                 st.session_state["current_team_name"] = name_by_id[sel_id]
-                st.session_state["page"]              = "assessment"
+                st.session_state.pop("current_session_id",   None)
+                st.session_state.pop("current_session_name", None)
+                st.session_state["page"] = "sessions"
                 st.rerun()
 
             if st.session_state.get("current_team_id"):
-                if st.button("Assessment", use_container_width=True):
-                    st.session_state["page"] = "assessment"
+                if st.button("Sessions", use_container_width=True):
+                    st.session_state["page"] = "sessions"
                     st.rerun()
 
         st.markdown("---")
@@ -511,7 +877,6 @@ def show_sidebar():
 def main():
     params = st.query_params
 
-    # Handle password recovery
     if params.get("type") == "recovery":
         if "token_hash" in params:
             handle_password_recovery(token_hash=params["token_hash"])
@@ -548,16 +913,24 @@ def main():
         update_server_session()
         show_sidebar()
 
-        page    = st.session_state.get("page", "teams")
-        team_id = st.session_state.get("current_team_id")
+        page       = st.session_state.get("page", "teams")
+        team_id    = st.session_state.get("current_team_id")
+        session_id = st.session_state.get("current_session_id")
 
         if page == "teams":
             page_teams()
-        elif page == "assessment" and not team_id:
-            st.warning("Please select a team first.")
-            page_teams()
+        elif page == "sessions":
+            if not team_id:
+                page_teams()
+            else:
+                page_sessions()
         elif page == "assessment":
-            page_assessment()
+            if not team_id:
+                page_teams()
+            elif not session_id:
+                page_sessions()
+            else:
+                page_assessment()
         else:
             page_teams()
 
