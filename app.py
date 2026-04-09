@@ -420,6 +420,7 @@ def page_teams():
         if col_open.button("Open", key=f"open_{team['id']}"):
             st.session_state["current_team_id"]   = team["id"]
             st.session_state["current_team_name"] = team["name"]
+            st.session_state["sidebar_team_sel"]  = team["id"]
             st.session_state["page"]              = "assessment"
             st.rerun()
 
@@ -472,16 +473,13 @@ def show_sidebar():
         on_teams_page = st.session_state.get("page", "teams") == "teams"
 
         if teams and not on_teams_page:
-            team_ids   = [t["id"]   for t in teams]
-            team_names = [t["name"] for t in teams]
+            team_ids   = [t["id"] for t in teams]
             current_id = st.session_state.get("current_team_id")
 
-            stored_sid = st.session_state.get("sidebar_team_sel")
-            if stored_sid not in team_ids:
-                stored_sid = team_ids[0]
-                st.session_state["sidebar_team_sel"] = stored_sid
-            if current_id and current_id in team_ids:
-                st.session_state["sidebar_team_sel"] = current_id
+            # Only initialise if unset or stale — never override on every rerun
+            # (overriding here cancels the user's in-flight selection before render)
+            if st.session_state.get("sidebar_team_sel") not in team_ids:
+                st.session_state["sidebar_team_sel"] = current_id or team_ids[0]
 
             name_by_id = {t["id"]: t["name"] for t in teams}
             sel_id = st.selectbox(
