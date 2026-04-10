@@ -1101,6 +1101,12 @@ def page_run_session():
     if mistakes_html:
         st.markdown(mistakes_html, unsafe_allow_html=True)
 
+    # ── Full checklist (expandable) ───────────────────────────────────────────
+    if sections.get("checklist"):
+        st.divider()
+        with st.expander("View full checklist detail"):
+            st.markdown(sections["checklist"])
+
     st.divider()
 
     # ── Outcome panel ─────────────────────────────────────────────────────────
@@ -1144,12 +1150,6 @@ def page_run_session():
     if nav3.button("Next →", disabled=(idx == total - 1), use_container_width=True):
         st.session_state["run_item_index"] = idx + 1
         st.rerun()
-
-    # ── Full checklist (expandable) ───────────────────────────────────────────
-    if sections.get("checklist"):
-        st.write("")
-        with st.expander("View full checklist detail"):
-            st.markdown(sections["checklist"])
 
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
