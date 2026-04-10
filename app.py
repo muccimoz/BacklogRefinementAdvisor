@@ -1161,6 +1161,11 @@ def page_run_session():
     team_name    = st.session_state.get("current_team_name", "Team")
     session_id   = st.session_state["current_session_id"]
 
+    session      = get_session(session_id)
+    raw_status   = (session.get("status", "in_progress") if session else "in_progress")
+    status_labels = {"in_progress": "In Progress", "complete": "Complete"}
+    status_label  = status_labels.get(raw_status, raw_status.replace("_", " ").title())
+
     # Oldest-first so items are reviewed in the order they were added
     all_items = list(reversed(get_backlog_items(session_id)))
 
@@ -1183,7 +1188,7 @@ def page_run_session():
     col_hdr, col_summary = st.columns([8, 2])
     with col_hdr:
         st.title(session_name)
-        st.caption(f"Team: {team_name}  |  Item {idx + 1} of {total}")
+        st.caption(f"Team: {team_name}  |  Item {idx + 1} of {total}  |  {status_label}")
     with col_summary:
         st.write("")
         st.write("")
