@@ -1078,6 +1078,10 @@ def page_run_session():
         if st.button("View Summary", use_container_width=True, key="btn_view_summary"):
             st.session_state["page"] = "summary"
             st.rerun()
+        if st.button("← Back to Prepare", use_container_width=True, key="btn_back_prepare"):
+            update_session_status(session_id, "preparing")
+            st.session_state["page"] = "prepare"
+            st.rerun()
 
     # ── Progress dots ─────────────────────────────────────────────────────────
     outcome_color_map = {label: color for label, color in OUTCOME_OPTIONS}
