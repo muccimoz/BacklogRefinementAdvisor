@@ -219,6 +219,9 @@ def do_login(email: str, password: str):
 
 
 def do_signup(email: str, password: str):
+    allowed_domain = st.secrets.get("allowed_email_domain", "")
+    if allowed_domain and not email.lower().endswith(f"@{allowed_domain.lower()}"):
+        return f"Sign up is restricted to @{allowed_domain} email addresses.", None
     try:
         get_supabase().auth.sign_up({"email": email, "password": password})
         return None, "Account created. Check your email to confirm before logging in."
