@@ -440,11 +440,11 @@ THRESHOLD_ZONE: [Too Vague / Ideal / Over-Refined]
 
 [2-3 sentences summarising the item's readiness for sprint commitment]
 
-## Clarity Gradient: [rating]
+## Clarity: [High / Moderate / Low]
 
 [Explain why this rating was assigned, referencing specific aspects of the submission]
 
-## Refinement Threshold: [zone]
+## Refinement: [Too Vague / Ideal / Over-Refined]
 
 [Explain why this zone was assigned]
 
