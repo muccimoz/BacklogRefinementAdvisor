@@ -531,6 +531,94 @@ def _status_badge(status: str) -> str:
             f'border-radius:10px;font-size:0.78em;font-weight:600">{label}</span>')
 
 
+def _parse_assessment(text: str) -> dict:
+    """Split stored Claude markdown into named sections."""
+    sections     = {}
+    current_key  = None
+    current_lines = []
+
+    for line in text.split("\n"):
+        if line.startswith("## "):
+            if current_key:
+                sections[current_key] = "\n".join(current_lines).strip()
+            heading = line[3:].strip().lower()
+            if heading.startswith("overall"):
+                current_key = "overall"
+            elif heading.startswith("clarity"):
+                current_key = "clarity_reasoning"
+            elif heading.startswith("refinement"):
+                current_key = "refinement_reasoning"
+            elif heading.startswith("checklist"):
+                current_key = "checklist"
+            elif heading.startswith("common"):
+                current_key = "common_mistakes"
+            else:
+                current_key = heading.replace(" ", "_")
+            current_lines = []
+        elif current_key is not None:
+            current_lines.append(line)
+
+    if current_key:
+        sections[current_key] = "\n".join(current_lines).strip()
+    return sections
+
+
+def _first_para(text: str, max_chars: int = 300) -> str:
+    """Return the first non-empty paragraph, truncated if needed."""
+    for para in text.split("\n\n"):
+        para = para.strip()
+        if para:
+            return para[:max_chars] + ("…" if len(para) > max_chars else "")
+    return (text or "")[:max_chars]
+
+
+def _render_rating_cards_html(clarity_short: str, zone: str,
+                               clarity_reasoning: str, refinement_reasoning: str) -> str:
+    clarity_colors = {"High": "#27ae60", "Moderate": "#e67e22", "Low": "#e74c3c"}
+    zone_colors    = {"Too Vague": "#e74c3c", "Ideal": "#27ae60", "Over-Refined": "#8e44ad"}
+    c_color = clarity_colors.get(clarity_short, "#7f8c8d")
+    z_color = zone_colors.get(zone, "#7f8c8d")
+    c_ctx   = _first_para(clarity_reasoning)
+    z_ctx   = _first_para(refinement_reasoning)
+    return f"""
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+  <div style="background:#fff;border-radius:8px;padding:14px 16px;
+              border:1px solid #e0e3e8;border-top:4px solid {c_color}">
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.6px;
+                color:#999;margin-bottom:5px">Clarity</div>
+    <div style="font-size:18px;font-weight:700;color:{c_color};margin-bottom:8px">{clarity_short}</div>
+    <div style="font-size:13px;color:#555;line-height:1.5">{c_ctx}</div>
+  </div>
+  <div style="background:#fff;border-radius:8px;padding:14px 16px;
+              border:1px solid #e0e3e8;border-top:4px solid {z_color}">
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.6px;
+                color:#999;margin-bottom:5px">Refinement</div>
+    <div style="font-size:18px;font-weight:700;color:{z_color};margin-bottom:8px">{zone}</div>
+    <div style="font-size:13px;color:#555;line-height:1.5">{z_ctx}</div>
+  </div>
+</div>"""
+
+
+def _render_overall_callout_html(text: str) -> str:
+    return f"""
+<div style="background:#EBF5FB;border-left:4px solid #2980b9;padding:12px 16px;
+            border-radius:0 6px 6px 0;font-size:14px;color:#333;
+            line-height:1.6;margin-bottom:16px">
+  {text}
+</div>"""
+
+
+def _render_mistakes_callout_html(text: str) -> str:
+    if not text or text.strip().lower().startswith("none detected"):
+        return ""
+    return f"""
+<div style="background:#fffde7;border-left:4px solid #f9a825;padding:12px 16px;
+            border-radius:0 6px 6px 0;font-size:13px;color:#555;
+            line-height:1.6;margin-bottom:16px">
+  <strong style="color:#e65100">Common Mistakes Detected:</strong><br>{text}
+</div>"""
+
+
 def _format_assessed_date(iso_str: str) -> str:
     try:
         dt  = datetime_type.fromisoformat(iso_str.replace("Z", "+00:00"))
@@ -987,19 +1075,31 @@ def page_run_session():
     st.markdown(" ".join(dots), unsafe_allow_html=True)
     st.divider()
 
-    # ── Item detail ───────────────────────────────────────────────────────────
+    # ── Item title ────────────────────────────────────────────────────────────
     st.subheader(item["title"])
+    st.write("")
 
+    # ── Rating cards + overall callout ────────────────────────────────────────
     clarity_short = item.get("clarity_gradient", "").replace(" Clarity", "")
     zone          = item.get("threshold_zone", "")
+    raw_output    = item.get("gemini_output", "") or ""
+    sections      = _parse_assessment(raw_output)
 
-    b1, b2, _ = st.columns([2, 2, 6])
-    b1.markdown(_clarity_badge(clarity_short), unsafe_allow_html=True)
-    b2.markdown(_zone_badge(zone),             unsafe_allow_html=True)
+    st.markdown(
+        _render_rating_cards_html(
+            clarity_short, zone,
+            sections.get("clarity_reasoning", ""),
+            sections.get("refinement_reasoning", ""),
+        ),
+        unsafe_allow_html=True,
+    )
 
-    st.write("")
-    if item.get("gemini_output"):
-        st.markdown(item["gemini_output"])
+    if sections.get("overall"):
+        st.markdown(_render_overall_callout_html(sections["overall"]), unsafe_allow_html=True)
+
+    mistakes_html = _render_mistakes_callout_html(sections.get("common_mistakes", ""))
+    if mistakes_html:
+        st.markdown(mistakes_html, unsafe_allow_html=True)
 
     st.divider()
 
@@ -1032,7 +1132,7 @@ def page_run_session():
     st.write("")
     nav1, nav2, nav3 = st.columns([2, 6, 2])
 
-    if nav1.button("Prev", disabled=(idx == 0), use_container_width=True):
+    if nav1.button("← Prev", disabled=(idx == 0), use_container_width=True):
         st.session_state["run_item_index"] = idx - 1
         st.rerun()
 
@@ -1041,9 +1141,15 @@ def page_run_session():
         unsafe_allow_html=True,
     )
 
-    if nav3.button("Next", disabled=(idx == total - 1), use_container_width=True):
+    if nav3.button("Next →", disabled=(idx == total - 1), use_container_width=True):
         st.session_state["run_item_index"] = idx + 1
         st.rerun()
+
+    # ── Full checklist (expandable) ───────────────────────────────────────────
+    if sections.get("checklist"):
+        st.write("")
+        with st.expander("View full checklist detail"):
+            st.markdown(sections["checklist"])
 
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
