@@ -691,8 +691,6 @@ def _render_summary_table_html(items: list) -> str:
             f'<td style="padding:11px 14px;border-bottom:1px solid #eef0f3">{z_badge}</td>'
             f'<td style="padding:11px 14px;border-bottom:1px solid #eef0f3">{o_badge}</td>'
             f'<td style="padding:11px 14px;border-bottom:1px solid #eef0f3;'
-            f'font-size:12px;color:#777;font-style:italic">{notes}</td>'
-            f'<td style="padding:11px 14px;border-bottom:1px solid #eef0f3;'
             f'font-size:12px;color:#888">{assessed_str}</td>'
             f'</tr>'
         )
@@ -703,11 +701,10 @@ def _render_summary_table_html(items: list) -> str:
         f'<table style="width:100%;border-collapse:collapse;background:#fff;'
         f'border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.1)">'
         f'<thead><tr>'
-        f'<th style="{th};width:30%">Backlog Item</th>'
+        f'<th style="{th};width:35%">Backlog Item</th>'
         f'<th style="{th}">Clarity</th>'
         f'<th style="{th}">Refinement</th>'
         f'<th style="{th}">Outcome</th>'
-        f'<th style="{th}">Notes</th>'
         f'<th style="{th}">Assessed</th>'
         f'</tr></thead>'
         f'<tbody>{rows}</tbody></table>'
@@ -998,7 +995,12 @@ def page_sessions():
             st.session_state["current_session_id"]   = session["id"]
             st.session_state["current_session_name"] = session["name"]
             st.session_state["run_item_index"]        = 0
-            st.session_state["page"] = "prepare" if status == "preparing" else "run_session"
+            if status == "preparing":
+                st.session_state["page"] = "prepare"
+            elif status == "complete":
+                st.session_state["page"] = "summary"
+            else:
+                st.session_state["page"] = "run_session"
             st.rerun()
 
         if col_rename.button("Rename", key=f"rename_sess_{session['id']}"):
