@@ -731,6 +731,53 @@ def _generate_summary_csv(items: list) -> str:
     return output.getvalue()
 
 
+def _adf_to_text(node, depth: int = 0) -> str:
+    """Recursively convert Atlassian Document Format to plain text."""
+    if not node or not isinstance(node, dict):
+        return ""
+    ntype   = node.get("type", "")
+    content = node.get("content", [])
+
+    if ntype == "text":
+        return node.get("text", "")
+    if ntype == "hardBreak":
+        return "\n"
+    if ntype == "rule":
+        return "\n---\n"
+    if ntype in ("media", "mediaSingle", "mediaGroup", "embed", "inlineCard"):
+        return ""
+    if ntype == "mention":
+        return node.get("attrs", {}).get("text", "")
+    if ntype == "emoji":
+        return node.get("attrs", {}).get("text", "")
+    if ntype == "paragraph":
+        inner = "".join(_adf_to_text(c) for c in content)
+        return inner.strip() + "\n"
+    if ntype == "heading":
+        inner = "".join(_adf_to_text(c) for c in content)
+        return inner.strip() + "\n"
+    if ntype == "bulletList":
+        lines = ["  " * depth + "- " + _adf_to_text(i, depth + 1).strip()
+                 for i in content]
+        return "\n".join(lines) + "\n"
+    if ntype == "orderedList":
+        lines = [f"{'  ' * depth}{n}. " + _adf_to_text(i, depth + 1).strip()
+                 for n, i in enumerate(content, 1)]
+        return "\n".join(lines) + "\n"
+    if ntype == "listItem":
+        parts = [_adf_to_text(c, depth) for c in content]
+        return " ".join(p.strip() for p in parts if p.strip())
+    if ntype == "codeBlock":
+        inner = "".join(_adf_to_text(c) for c in content)
+        return f"```\n{inner}\n```\n"
+    if ntype == "blockquote":
+        inner = "".join(_adf_to_text(c) for c in content)
+        return "> " + inner.strip() + "\n"
+    # doc and everything else — recurse into children
+    parts = [_adf_to_text(c, depth) for c in content]
+    return "\n".join(p for p in parts if p.strip())
+
+
 def _split_checklist_groups(checklist_text: str) -> list:
     """Split checklist markdown into individual group strings by ### headings."""
     groups  = []
@@ -1045,6 +1092,11 @@ def page_prepare():
         st.success("Item assessed and added.")
     if st.session_state.pop("item_deleted", None):
         st.success(st.session_state.pop("item_deleted_name", "Item deleted."))
+    jira_done = st.session_state.pop("jira_import_done", 0)
+    if jira_done:
+        st.success(f"{jira_done} item(s) imported from Jira and assessed.")
+    for err in st.session_state.pop("jira_import_errors", []):
+        st.error(f"Assessment failed: {err}")
 
     # ── Header row ────────────────────────────────────────────────────────────
     col_hdr, col_start = st.columns([8, 2])
@@ -1067,10 +1119,33 @@ def page_prepare():
 
     st.divider()
 
+    # ── Apply pending select-all flags before any widgets render ─────────────
+    if st.session_state.pop("jira_select_all_flag", False):
+        for iss in st.session_state.get("jira_issues", []):
+            st.session_state[f"jira_cb_{iss['key']}"] = True
+    if st.session_state.pop("jira_deselect_all_flag", False):
+        for iss in st.session_state.get("jira_issues", []):
+            st.session_state[f"jira_cb_{iss['key']}"] = False
+
     # ── Toolbar ───────────────────────────────────────────────────────────────
-    show_add = st.session_state.get("show_add_item", False)
-    if st.button("+ Add Item", key="btn_toggle_add"):
-        st.session_state["show_add_item"] = not show_add
+    show_add  = st.session_state.get("show_add_item",  False)
+    show_jira = st.session_state.get("show_jira_panel", False)
+
+    tb1, tb2, _ = st.columns([2, 2, 6])
+    if tb1.button("+ Add Item", key="btn_toggle_add"):
+        new_val = not show_add
+        st.session_state["show_add_item"] = new_val
+        if new_val:
+            st.session_state["show_jira_panel"] = False
+            st.session_state.pop("jira_issues", None)
+        st.rerun()
+    if tb2.button("Import from Jira", key="btn_toggle_jira"):
+        new_val = not show_jira
+        st.session_state["show_jira_panel"] = new_val
+        if new_val:
+            st.session_state["show_add_item"] = False
+        if not new_val:
+            st.session_state.pop("jira_issues", None)
         st.rerun()
 
     # ── Add Item panel ────────────────────────────────────────────────────────
@@ -1118,6 +1193,127 @@ def page_prepare():
                             st.rerun()
                         except Exception as e:
                             st.error(f"Assessment failed: {e}")
+
+    # ── Jira import panel ─────────────────────────────────────────────────────
+    if st.session_state.get("show_jira_panel"):
+        with st.container(border=True):
+            st.subheader("Import from Jira")
+            jira_issues = st.session_state.get("jira_issues")
+
+            if jira_issues is None:
+                # ── Step 1: JQL query ─────────────────────────────────────
+                jql = st.text_input(
+                    "JQL Query",
+                    value='project = "" AND issuetype = Story ORDER BY created DESC',
+                    key="jira_jql_input",
+                    help='Replace the project key and adjust the query as needed. Example: project = PAY AND issuetype = Story AND sprint = "Sprint 24"',
+                )
+                if st.button("Fetch Issues", key="btn_jira_fetch", type="primary"):
+                    if not jql.strip():
+                        st.warning("Enter a JQL query.")
+                    else:
+                        with st.spinner("Fetching from Jira..."):
+                            try:
+                                resp = httpx.get(
+                                    f"{st.secrets['jira_url']}/rest/api/3/search/jql",
+                                    auth=(st.secrets["jira_email"], st.secrets["jira_api_token"]),
+                                    params={
+                                        "jql":        jql.strip(),
+                                        "maxResults": 50,
+                                        "fields":     "summary,description,issuetype",
+                                    },
+                                    timeout=15,
+                                )
+                                if resp.status_code == 200:
+                                    issues = resp.json().get("issues", [])
+                                    if issues:
+                                        st.session_state["jira_issues"] = issues
+                                        st.rerun()
+                                    else:
+                                        st.info("No issues found for that query.")
+                                else:
+                                    st.error(f"Jira query failed — HTTP {resp.status_code}: {resp.text[:300]}")
+                            except Exception as e:
+                                st.error(f"Error fetching from Jira: {e}")
+
+            else:
+                # ── Step 2: Select issues ─────────────────────────────────
+                st.caption(f"{len(jira_issues)} issues found. Select the ones to import.")
+
+                sel_col1, sel_col2, _ = st.columns([2, 2, 6])
+                if sel_col1.button("Select All", key="btn_jira_sel_all"):
+                    st.session_state["jira_select_all_flag"] = True
+                    st.rerun()
+                if sel_col2.button("Deselect All", key="btn_jira_desel_all"):
+                    st.session_state["jira_deselect_all_flag"] = True
+                    st.rerun()
+
+                st.write("")
+                for issue in jira_issues:
+                    ikey    = issue["key"]
+                    fields  = issue.get("fields", {})
+                    summary = fields.get("summary", "(no summary)")
+                    itype   = fields.get("issuetype", {}).get("name", "")
+                    cb_col, info_col = st.columns([1, 11])
+                    cb_col.checkbox("", key=f"jira_cb_{ikey}")
+                    info_col.markdown(f"**{ikey}** — {summary}  `{itype}`")
+
+                selected_keys = [
+                    i["key"] for i in jira_issues
+                    if st.session_state.get(f"jira_cb_{i['key']}", False)
+                ]
+                n_sel = len(selected_keys)
+
+                st.write("")
+                imp_col, back_col, cancel_col, _ = st.columns([3, 2, 2, 3])
+
+                if imp_col.button(
+                    f"Import & Assess Selected ({n_sel})",
+                    type="primary",
+                    disabled=(n_sel == 0),
+                    key="btn_jira_import",
+                    use_container_width=True,
+                ):
+                    selected = [i for i in jira_issues if i["key"] in selected_keys]
+                    progress_bar = st.progress(0)
+                    status_text  = st.empty()
+                    errors       = []
+
+                    for n, issue in enumerate(selected):
+                        fields   = issue.get("fields", {})
+                        summary  = fields.get("summary", "")
+                        desc_adf = fields.get("description")
+                        desc     = _adf_to_text(desc_adf) if desc_adf else ""
+
+                        status_text.text(f"Assessing {n + 1} of {len(selected)}: {summary[:60]}...")
+                        progress_bar.progress((n + 1) / len(selected))
+
+                        try:
+                            clarity, zone, output = run_claude_evaluation(
+                                summary, desc, "", "", "", "",
+                            )
+                            create_backlog_item(
+                                session_id, summary, desc,
+                                "", "", "", "", clarity, zone, output,
+                            )
+                        except Exception as e:
+                            errors.append(f"{issue['key']}: {e}")
+
+                    st.session_state.pop("jira_issues", None)
+                    st.session_state["show_jira_panel"]  = False
+                    st.session_state["jira_import_done"] = len(selected) - len(errors)
+                    if errors:
+                        st.session_state["jira_import_errors"] = errors
+                    st.rerun()
+
+                if back_col.button("← Back", key="btn_jira_back", use_container_width=True):
+                    st.session_state.pop("jira_issues", None)
+                    st.rerun()
+
+                if cancel_col.button("Cancel", key="btn_jira_cancel", use_container_width=True):
+                    st.session_state.pop("jira_issues", None)
+                    st.session_state["show_jira_panel"] = False
+                    st.rerun()
 
     # ── Items table ───────────────────────────────────────────────────────────
     if not items:
