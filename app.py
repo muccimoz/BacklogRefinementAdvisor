@@ -604,6 +604,8 @@ def _render_overall_callout_html(text: str) -> str:
 <div style="background:#EBF5FB;border-left:4px solid #2980b9;padding:12px 16px;
             border-radius:0 6px 6px 0;font-size:14px;color:#333;
             line-height:1.6;margin-bottom:16px">
+  <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.6px;
+              color:#2980b9;font-weight:700;margin-bottom:6px">Overall</div>
   {text}
 </div>"""
 
@@ -617,6 +619,21 @@ def _render_mistakes_callout_html(text: str) -> str:
             line-height:1.6;margin-bottom:16px">
   <strong style="color:#e65100">Common Mistakes Detected:</strong><br>{text}
 </div>"""
+
+
+def _split_checklist_groups(checklist_text: str) -> list:
+    """Split checklist markdown into individual group strings by ### headings."""
+    groups  = []
+    current = []
+    for line in checklist_text.split("\n"):
+        if line.startswith("### ") and current:
+            groups.append("\n".join(current))
+            current = [line]
+        else:
+            current.append(line)
+    if current:
+        groups.append("\n".join(current))
+    return groups
 
 
 def _format_assessed_date(iso_str: str) -> str:
@@ -1101,11 +1118,21 @@ def page_run_session():
     if mistakes_html:
         st.markdown(mistakes_html, unsafe_allow_html=True)
 
-    # ── Full checklist (expandable) ───────────────────────────────────────────
+    # ── Full checklist (expandable, 2-column layout) ─────────────────────────
     if sections.get("checklist"):
         st.divider()
         with st.expander("View full checklist detail"):
-            st.markdown(sections["checklist"])
+            groups = _split_checklist_groups(sections["checklist"])
+            if len(groups) >= 3:
+                left_col, right_col = st.columns(2)
+                with left_col:
+                    for g in groups[:2]:
+                        st.markdown(g)
+                with right_col:
+                    for g in groups[2:]:
+                        st.markdown(g)
+            else:
+                st.markdown(sections["checklist"])
 
     st.divider()
 
@@ -1114,13 +1141,6 @@ def page_run_session():
 
     current_outcome = item.get("outcome") or ""
     current_notes   = item.get("outcome_notes") or ""
-
-    notes_val = st.text_input(
-        "Notes (optional)",
-        value=current_notes,
-        key=f"notes_{item['id']}",
-        placeholder="Optional facilitator note",
-    )
 
     oc1, oc2, oc3, oc4, oc5 = st.columns(5)
     for col, (label, _) in zip([oc1, oc2, oc3, oc4, oc5], OUTCOME_OPTIONS):
@@ -1134,20 +1154,25 @@ def page_run_session():
             st.session_state["outcome_saved"] = True
             st.rerun()
 
-    # ── Navigation ────────────────────────────────────────────────────────────
-    st.write("")
-    nav1, nav2, nav3 = st.columns([2, 6, 2])
+    # ── Notes + navigation on one row ─────────────────────────────────────────
+    note_col, ctr_col, prev_col, next_col = st.columns([7, 1, 1, 1])
 
-    if nav1.button("← Prev", disabled=(idx == 0), use_container_width=True):
-        st.session_state["run_item_index"] = idx - 1
-        st.rerun()
-
-    nav2.markdown(
-        f'<div style="text-align:center;padding-top:8px">{idx + 1} of {total}</div>',
+    note_col.text_input(
+        "Note",
+        value=current_notes,
+        key=f"notes_{item['id']}",
+        label_visibility="collapsed",
+        placeholder="Optional facilitator note",
+    )
+    ctr_col.markdown(
+        f'<div style="text-align:center;padding-top:30px;font-size:13px;color:#aaa">'
+        f'{idx + 1}/{total}</div>',
         unsafe_allow_html=True,
     )
-
-    if nav3.button("Next →", disabled=(idx == total - 1), use_container_width=True):
+    if prev_col.button("← Prev", disabled=(idx == 0), use_container_width=True):
+        st.session_state["run_item_index"] = idx - 1
+        st.rerun()
+    if next_col.button("Next →", disabled=(idx == total - 1), use_container_width=True):
         st.session_state["run_item_index"] = idx + 1
         st.rerun()
 
