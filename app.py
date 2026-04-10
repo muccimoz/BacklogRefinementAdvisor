@@ -2,7 +2,6 @@ import time
 import streamlit as st
 import httpx
 import anthropic
-from google import genai
 from datetime import date as date_type
 from supabase import create_client, Client
 
@@ -354,123 +353,7 @@ def delete_backlog_item(item_id: str):
     db().table("backlog_items").delete().eq("id", item_id).execute()
 
 
-# ── Gemini evaluation ──────────────────────────────────────────────────────────
-def run_gemini_evaluation(title, description, acceptance_criteria,
-                          dependencies, assumptions, notes) -> tuple[str, str, str]:
-    client = genai.Client(api_key=st.secrets["gemini_api_key"])
-
-    fields = [f"Title: {title}"]
-    if description:          fields.append(f"Description:\n{description}")
-    if acceptance_criteria:  fields.append(f"Acceptance Criteria:\n{acceptance_criteria}")
-    if dependencies:         fields.append(f"Dependencies: {dependencies}")
-    if assumptions:          fields.append(f"Assumptions: {assumptions}")
-    if notes:                fields.append(f"Notes:\n{notes}")
-    item_text = "\n\n".join(fields)
-
-    prompt = f"""You are an expert Agile coach evaluating a backlog item for sprint readiness.
-
-Evaluate the following backlog item against Mike Cohn's Product Backlog Refinement Checklist.
-
-BACKLOG ITEM:
-{item_text}
-
-CHECKLIST (14 items across 4 groups):
-
-1. Shared Understanding
-   a. The team can explain the item in their own words
-   b. The team understands the problem this item is intended to solve
-   c. The team understands what must be true for this item to be considered complete
-   d. The team agrees on what is included and what is not included
-
-2. Acceptance Boundaries
-   a. The major acceptance criteria have been identified
-   b. Obvious edge cases have been discussed
-   c. The team understands the key assumptions behind this item
-
-3. Size and Sprint Fit
-   a. The item is small enough to be completed within a sprint
-   b. If the item is too large, the team knows how it will be split
-   c. The item is comparable in size to work the team has successfully completed before
-   d. The team feels comfortable committing to this item
-
-4. Risks and Unknowns
-   a. Unknowns that could significantly increase scope have been resolved
-   b. Dependencies have been identified
-   c. Remaining uncertainty feels manageable within the sprint
-
-CLARITY GRADIENT — choose one based on these criteria:
-- High Clarity: next sprint or two, clear purpose, acceptance criteria defined, sprint-threatening unknowns resolved, small enough to fit in a sprint
-- Moderate Clarity: rough understanding, likely candidate for refinement soon, some unknowns still open
-- Low Clarity: rough ideas, minimal descriptions, may change or disappear, not yet refined
-
-REFINEMENT THRESHOLD — choose one based on these criteria:
-- Too Vague: major unanswered questions, high likelihood of surprises, team cannot commit responsibly
-- Ideal: enough clarity to fit in a sprint, major risks addressed, minor unknowns acceptable
-- Over-Refined: trying to eliminate all uncertainty, refining work far in advance, spending more time refining than delivering
-
-COMMON MISTAKES — only flag if clearly evident from the submission:
-1. Refining Until Nothing Is Uncertain
-2. Refining Too Far Ahead
-3. Refining Too Late
-4. Turning Refinement Into Design
-5. Including Everyone Every Time
-
-Respond using EXACTLY this format (do not deviate):
-
-CLARITY_GRADIENT: [High Clarity / Moderate Clarity / Low Clarity]
-THRESHOLD_ZONE: [Too Vague / Ideal / Over-Refined]
-
----
-
-## Overall Assessment
-
-[2-3 sentences summarising the item's readiness for sprint commitment]
-
-## Clarity Gradient: [rating]
-
-[Explain why this rating was assigned, referencing specific aspects of the submission]
-
-## Refinement Threshold: [zone]
-
-[Explain why this zone was assigned]
-
-## Checklist Analysis
-
-### 1. Shared Understanding
-[For each of the 4 items: one line stating whether it is satisfied, a gap, or unclear based on what was submitted. For any gaps, add 1-2 clarifying questions indented beneath it.]
-
-### 2. Acceptance Boundaries
-[Same format as above]
-
-### 3. Size and Sprint Fit
-[Same format as above]
-
-### 4. Risks and Unknowns
-[Same format as above]
-
-## Common Mistakes Detected
-
-[Only include content here if any of the 5 mistakes are clearly evident. For each detected mistake: state the mistake name and one sentence explaining why it was flagged. If none are detected, write: None detected.]"""
-
-    response    = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
-    text        = response.text.strip()
-
-    clarity = "Unknown"
-    zone    = "Unknown"
-    for line in text.split("\n")[:8]:
-        if line.startswith("CLARITY_GRADIENT:"):
-            clarity = line.replace("CLARITY_GRADIENT:", "").strip()
-        elif line.startswith("THRESHOLD_ZONE:"):
-            zone = line.replace("THRESHOLD_ZONE:", "").strip()
-
-    display_text = text
-    if "---" in text:
-        display_text = text[text.index("---") + 3:].strip()
-
-    return clarity, zone, display_text
-
-
-# ── Claude evaluation (branch test) ───────────────────────────────────────────
+# ── Claude evaluation ─────────────────────────────────────────────────────────
 def run_claude_evaluation(title, description, acceptance_criteria,
                           dependencies, assumptions, notes) -> tuple[str, str, str]:
     client = anthropic.Anthropic(api_key=st.secrets["anthropic_api_key"])
@@ -897,27 +780,18 @@ def page_assessment():
                                                placeholder="What the team is taking as given")
             notes               = st.text_area("Notes", height=80,
                                               placeholder="Anything else relevant")
-            engine    = st.radio("AI Engine (branch test)", ["Claude", "Gemini"],
-                                 horizontal=True, help="Temporary toggle for comparing outputs")
             submitted = st.form_submit_button("Run Assessment")
 
         if submitted:
             if not title.strip():
                 st.warning("Title is required.")
             else:
-                engine_label = "Claude" if engine == "Claude" else "Gemini"
-                with st.spinner(f"Evaluating with {engine_label}..."):
+                with st.spinner("Evaluating with Claude..."):
                     try:
-                        if engine == "Claude":
-                            clarity, zone, output = run_claude_evaluation(
-                                title.strip(), description, acceptance_criteria,
-                                dependencies, assumptions, notes,
-                            )
-                        else:
-                            clarity, zone, output = run_gemini_evaluation(
-                                title.strip(), description, acceptance_criteria,
-                                dependencies, assumptions, notes,
-                            )
+                        clarity, zone, output = run_claude_evaluation(
+                            title.strip(), description, acceptance_criteria,
+                            dependencies, assumptions, notes,
+                        )
                         create_backlog_item(
                             session_id, title.strip(), description, acceptance_criteria,
                             dependencies, assumptions, notes, clarity, zone, output,
