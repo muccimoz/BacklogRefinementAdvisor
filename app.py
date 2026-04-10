@@ -1,3 +1,5 @@
+import csv
+import io
 import time
 import streamlit as st
 import httpx
@@ -621,6 +623,114 @@ def _render_mistakes_callout_html(text: str) -> str:
 </div>"""
 
 
+def _render_outcome_count_bar_html(items: list) -> str:
+    outcome_config = [
+        ("Ready for Sprint",        "#27ae60", "#e8f8f0"),
+        ("Needs More Refinement",   "#2980b9", "#e8f4fd"),
+        ("Return to Product Owner", "#e67e22", "#fef3e8"),
+        ("Defer",                   "#7f8c8d", "#f2f3f4"),
+        ("Split Required",          "#8e44ad", "#f5eef8"),
+    ]
+    counts = {}
+    for item in items:
+        key = item.get("outcome") or ""
+        counts[key] = counts.get(key, 0) + 1
+
+    html = '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:4px">'
+    for label, color, bg in outcome_config:
+        n = counts.get(label, 0)
+        html += (
+            f'<div style="display:flex;align-items:center;gap:8px;background:{bg};'
+            f'border-radius:8px;padding:10px 16px;border:1px solid {color}40;min-width:150px">'
+            f'<div style="width:10px;height:10px;border-radius:50%;background:{color};flex-shrink:0"></div>'
+            f'<div><div style="font-size:20px;font-weight:700;color:{color}">{n}</div>'
+            f'<div style="font-size:11px;color:#888">{label}</div></div></div>'
+        )
+    pending = counts.get("", 0)
+    if pending:
+        html += (
+            f'<div style="display:flex;align-items:center;gap:8px;background:#f8f9fa;'
+            f'border-radius:8px;padding:10px 16px;border:1px solid #e0e3e8;min-width:100px">'
+            f'<div style="width:10px;height:10px;border-radius:50%;background:#bdc3c7;flex-shrink:0"></div>'
+            f'<div><div style="font-size:20px;font-weight:700;color:#aaa">{pending}</div>'
+            f'<div style="font-size:11px;color:#888">Pending</div></div></div>'
+        )
+    html += '</div>'
+    return html
+
+
+def _render_summary_table_html(items: list) -> str:
+    clarity_colors = {"High": "#27ae60", "Moderate": "#e67e22", "Low": "#e74c3c"}
+    zone_colors    = {"Too Vague": "#e74c3c", "Ideal": "#27ae60", "Over-Refined": "#8e44ad"}
+    outcome_colors = {label: color for label, color in OUTCOME_OPTIONS}
+
+    def badge(text, color):
+        return (f'<span style="display:inline-block;padding:3px 10px;border-radius:12px;'
+                f'font-size:11px;font-weight:600;white-space:nowrap;'
+                f'background:{color}22;color:{color};border:1px solid {color}44">{text}</span>')
+
+    rows = ""
+    for item in items:
+        clarity_full  = item.get("clarity_gradient", "") or ""
+        zone          = item.get("threshold_zone", "") or ""
+        outcome       = item.get("outcome", "") or ""
+        notes         = item.get("outcome_notes", "") or ""
+        clarity_short = clarity_full.replace(" Clarity", "")
+        assessed_str  = _format_assessed_date(item.get("created_at", ""))
+
+        c_badge = badge(clarity_short, clarity_colors.get(clarity_short, "#7f8c8d")) if clarity_short else ""
+        z_badge = badge(zone,          zone_colors.get(zone, "#7f8c8d"))             if zone          else ""
+        o_badge = (badge(outcome, outcome_colors.get(outcome, "#7f8c8d"))
+                   if outcome else badge("Pending", "#bdc3c7"))
+
+        rows += (
+            f'<tr>'
+            f'<td style="padding:11px 14px;border-bottom:1px solid #eef0f3;font-size:13px">'
+            f'<strong>{item["title"]}</strong></td>'
+            f'<td style="padding:11px 14px;border-bottom:1px solid #eef0f3">{c_badge}</td>'
+            f'<td style="padding:11px 14px;border-bottom:1px solid #eef0f3">{z_badge}</td>'
+            f'<td style="padding:11px 14px;border-bottom:1px solid #eef0f3">{o_badge}</td>'
+            f'<td style="padding:11px 14px;border-bottom:1px solid #eef0f3;'
+            f'font-size:12px;color:#777;font-style:italic">{notes}</td>'
+            f'<td style="padding:11px 14px;border-bottom:1px solid #eef0f3;'
+            f'font-size:12px;color:#888">{assessed_str}</td>'
+            f'</tr>'
+        )
+
+    th = ('background:#1e2a3a;color:#fff;text-align:left;padding:11px 14px;'
+          'font-size:12px;font-weight:600;letter-spacing:0.4px')
+    return (
+        f'<table style="width:100%;border-collapse:collapse;background:#fff;'
+        f'border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.1)">'
+        f'<thead><tr>'
+        f'<th style="{th};width:30%">Backlog Item</th>'
+        f'<th style="{th}">Clarity</th>'
+        f'<th style="{th}">Refinement</th>'
+        f'<th style="{th}">Outcome</th>'
+        f'<th style="{th}">Notes</th>'
+        f'<th style="{th}">Assessed</th>'
+        f'</tr></thead>'
+        f'<tbody>{rows}</tbody></table>'
+    )
+
+
+def _generate_summary_csv(items: list) -> str:
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Title", "Clarity", "Refinement", "Outcome", "Notes", "Assessed"])
+    for item in items:
+        clarity_full  = item.get("clarity_gradient", "") or ""
+        writer.writerow([
+            item.get("title", ""),
+            clarity_full.replace(" Clarity", ""),
+            item.get("threshold_zone", "") or "",
+            item.get("outcome", "") or "",
+            item.get("outcome_notes", "") or "",
+            _format_assessed_date(item.get("created_at", "")),
+        ])
+    return output.getvalue()
+
+
 def _split_checklist_groups(checklist_text: str) -> list:
     """Split checklist markdown into individual group strings by ### headings."""
     groups  = []
@@ -1181,6 +1291,57 @@ def page_run_session():
         st.rerun()
 
 
+def page_summary():
+    session_name = st.session_state.get("current_session_name", "Session")
+    team_name    = st.session_state.get("current_team_name", "Team")
+    session_id   = st.session_state["current_session_id"]
+
+    items = list(reversed(get_backlog_items(session_id)))
+
+    # Auto-mark as complete when summary is viewed
+    session = get_session(session_id)
+    if session and session.get("status") != "complete":
+        update_session_status(session_id, "complete")
+
+    # ── Header ────────────────────────────────────────────────────────────────
+    col_hdr, col_export = st.columns([8, 2])
+    with col_hdr:
+        st.title("Session Summary")
+        st.caption(f"{session_name}  |  Team: {team_name}  |  {len(items)} items")
+    with col_export:
+        st.write("")
+        st.write("")
+        csv_data = _generate_summary_csv(items)
+        st.download_button(
+            "Export CSV",
+            data=csv_data,
+            file_name=f"{session_name} Summary.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+
+    st.divider()
+
+    # ── Outcome count bar ─────────────────────────────────────────────────────
+    st.markdown(_render_outcome_count_bar_html(items), unsafe_allow_html=True)
+
+    st.divider()
+
+    # ── Summary table ─────────────────────────────────────────────────────────
+    st.markdown(_render_summary_table_html(items), unsafe_allow_html=True)
+
+    # ── Action buttons ────────────────────────────────────────────────────────
+    st.write("")
+    btn1, btn2, _ = st.columns([2, 2, 6])
+    if btn1.button("← Back to Session", use_container_width=True):
+        st.session_state["page"] = "run_session"
+        st.rerun()
+    if btn2.button("Reopen Session", use_container_width=True):
+        update_session_status(session_id, "in_progress")
+        st.session_state["page"] = "run_session"
+        st.rerun()
+
+
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 def show_sidebar():
     with st.sidebar:
@@ -1295,6 +1456,13 @@ def main():
                 page_sessions()
             else:
                 page_run_session()
+        elif page == "summary":
+            if not team_id:
+                page_teams()
+            elif not session_id:
+                page_sessions()
+            else:
+                page_summary()
         else:
             page_teams()
 
