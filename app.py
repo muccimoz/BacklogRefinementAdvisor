@@ -1400,7 +1400,7 @@ def page_jira_test():
             with st.spinner("Querying Jira..."):
                 try:
                     resp = httpx.get(
-                        f"{jira_url}/rest/api/3/search",
+                        f"{jira_url}/rest/api/3/search/jql",
                         auth=(jira_email, jira_token),
                         params={
                             "jql":        jql.strip(),
