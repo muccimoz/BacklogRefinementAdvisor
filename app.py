@@ -874,7 +874,7 @@ def page_prepare():
     st.subheader(f"Assessed Items ({len(items)})")
 
     # Column header row
-    h1, h2, h3, h4, h5 = st.columns([5, 2, 2, 2, 1])
+    h1, h2, h3, h4, h5 = st.columns([5, 2, 2, 2, 2])
     h1.markdown("**Item**")
     h2.markdown("**Clarity**")
     h3.markdown("**Refinement**")
@@ -889,12 +889,12 @@ def page_prepare():
         clarity_short = clarity_full.replace(" Clarity", "")
         assessed_str  = _format_assessed_date(item.get("created_at", ""))
 
-        c1, c2, c3, c4, c5 = st.columns([5, 2, 2, 2, 1])
+        c1, c2, c3, c4, c5 = st.columns([5, 2, 2, 2, 2])
         c1.write(f"**{item['title']}**")
         c2.markdown(_clarity_badge(clarity_short), unsafe_allow_html=True)
         c3.markdown(_zone_badge(zone), unsafe_allow_html=True)
         c4.write(assessed_str)
-        if c5.button("Del", key=f"del_{item['id']}", help="Delete this item"):
+        if c5.button("Delete", key=f"del_{item['id']}"):
             _dialog_delete_item(item)
 
         with st.expander("View full assessment"):
