@@ -1412,7 +1412,7 @@ def page_jira_test():
                     if resp.status_code == 200:
                         data   = resp.json()
                         issues = data.get("issues", [])
-                        total  = data.get("total", 0)
+                        total  = data.get("total") or data.get("totalCount") or len(issues)
                         st.success(f"Found {total} total issues. Showing first {len(issues)}.")
                         for issue in issues:
                             key     = issue.get("key", "")
