@@ -1125,7 +1125,7 @@ def page_run_session():
     # ── Full checklist (expandable, 2-column layout) ─────────────────────────
     if sections.get("checklist"):
         st.divider()
-        with st.expander("View full checklist detail"):
+        with st.expander("View Assessment Details"):
             groups = _split_checklist_groups(sections["checklist"])
             if len(groups) >= 3:
                 left_col, right_col = st.columns(2)
