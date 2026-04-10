@@ -300,7 +300,7 @@ def delete_team(team_id: str):
 
 def get_refinement_sessions(team_id: str) -> list:
     try:
-        r = db().table("refinement_sessions").select("id, name, created_at").eq(
+        r = db().table("refinement_sessions").select("id, name, status, created_at").eq(
             "team_id", team_id
         ).order("created_at", desc=True).execute()
         return r.data or []
@@ -501,6 +501,15 @@ def _zone_badge(zone: str) -> str:
     color  = colors.get(zone, "#7f8c8d")
     return (f'<span style="background:{color};color:white;padding:2px 10px;'
             f'border-radius:10px;font-size:0.82em;font-weight:600">{zone}</span>')
+
+
+def _status_badge(status: str) -> str:
+    labels = {"preparing": "Preparing", "in_progress": "In Progress", "complete": "Complete"}
+    colors = {"preparing": "#7f8c8d", "in_progress": "#e67e22", "complete": "#27ae60"}
+    label  = labels.get(status, status.title())
+    color  = colors.get(status, "#7f8c8d")
+    return (f'<span style="background:{color};color:white;padding:1px 8px;'
+            f'border-radius:10px;font-size:0.78em;font-weight:600">{label}</span>')
 
 
 def _format_assessed_date(iso_str: str) -> str:
@@ -745,12 +754,16 @@ def page_sessions():
 
     for session in sessions:
         col_name, col_open, col_rename, col_delete = st.columns([5, 2, 2, 2])
-        col_name.write(f"**{session['name']}**")
+        status = session.get("status", "preparing")
+        col_name.markdown(
+            f"**{session['name']}** &nbsp; {_status_badge(status)}",
+            unsafe_allow_html=True,
+        )
 
         if col_open.button("Open", key=f"open_sess_{session['id']}"):
             st.session_state["current_session_id"]   = session["id"]
             st.session_state["current_session_name"] = session["name"]
-            st.session_state["page"]                 = "prepare"
+            st.session_state["page"] = "prepare" if status == "preparing" else "run_session"
             st.rerun()
 
         if col_rename.button("Rename", key=f"rename_sess_{session['id']}"):
