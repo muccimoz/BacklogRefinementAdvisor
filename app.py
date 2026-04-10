@@ -1188,7 +1188,7 @@ def page_run_session():
     col_hdr, col_summary = st.columns([8, 2])
     with col_hdr:
         st.title(session_name)
-        st.caption(f"Team: {team_name}  |  Item {idx + 1} of {total}  |  {status_label}")
+        st.caption(f"Team: {team_name}  |  Item {idx + 1} of {total}  |  Status: {status_label}")
     with col_summary:
         st.write("")
         st.write("")
@@ -1314,7 +1314,7 @@ def page_summary():
     col_hdr, col_export = st.columns([8, 2])
     with col_hdr:
         st.title("Session Summary")
-        st.caption(f"{session_name}  |  Team: {team_name}  |  {len(items)} items")
+        st.caption(f"{session_name}  |  Team: {team_name}  |  {len(items)} items  |  Status: Complete")
     with col_export:
         st.write("")
         st.write("")
