@@ -2,7 +2,7 @@ import time
 import streamlit as st
 import httpx
 import anthropic
-from datetime import date as date_type
+from datetime import date as date_type, datetime as datetime_type
 from supabase import create_client, Client
 
 st.set_page_config(
@@ -353,6 +353,21 @@ def delete_backlog_item(item_id: str):
     db().table("backlog_items").delete().eq("id", item_id).execute()
 
 
+def get_session(session_id: str) -> dict | None:
+    try:
+        r = db().table("refinement_sessions").select("*").eq("id", session_id).execute()
+        return r.data[0] if r.data else None
+    except Exception:
+        return None
+
+
+def update_session_status(session_id: str, status: str):
+    try:
+        db().table("refinement_sessions").update({"status": status}).eq("id", session_id).execute()
+    except Exception as e:
+        st.error(f"Failed to update session status: {e}")
+
+
 # ── Claude evaluation ─────────────────────────────────────────────────────────
 def run_claude_evaluation(title, description, acceptance_criteria,
                           dependencies, assumptions, notes) -> tuple[str, str, str]:
@@ -471,6 +486,29 @@ THRESHOLD_ZONE: [Too Vague / Ideal / Over-Refined]
         display_text = text[text.index("---") + 3:].strip()
 
     return clarity, zone, display_text
+
+
+# ── Display helpers ───────────────────────────────────────────────────────────
+def _clarity_badge(clarity: str) -> str:
+    colors = {"High": "#27ae60", "Moderate": "#e67e22", "Low": "#e74c3c"}
+    color  = colors.get(clarity, "#7f8c8d")
+    return (f'<span style="background:{color};color:white;padding:2px 10px;'
+            f'border-radius:10px;font-size:0.82em;font-weight:600">{clarity}</span>')
+
+
+def _zone_badge(zone: str) -> str:
+    colors = {"Too Vague": "#e74c3c", "Ideal": "#27ae60", "Over-Refined": "#8e44ad"}
+    color  = colors.get(zone, "#7f8c8d")
+    return (f'<span style="background:{color};color:white;padding:2px 10px;'
+            f'border-radius:10px;font-size:0.82em;font-weight:600">{zone}</span>')
+
+
+def _format_assessed_date(iso_str: str) -> str:
+    try:
+        dt  = datetime_type.fromisoformat(iso_str.replace("Z", "+00:00"))
+        return f"{dt.day} {dt.strftime('%b %Y')}"
+    except Exception:
+        return iso_str[:10] if iso_str else ""
 
 
 # ── Dialogs ────────────────────────────────────────────────────────────────────
@@ -712,7 +750,7 @@ def page_sessions():
         if col_open.button("Open", key=f"open_sess_{session['id']}"):
             st.session_state["current_session_id"]   = session["id"]
             st.session_state["current_session_name"] = session["name"]
-            st.session_state["page"]                 = "assessment"
+            st.session_state["page"]                 = "prepare"
             st.rerun()
 
         if col_rename.button("Rename", key=f"rename_sess_{session['id']}"):
@@ -743,87 +781,127 @@ def page_sessions():
                 st.rerun()
 
 
-def page_assessment():
+def page_prepare():
     session_name = st.session_state.get("current_session_name", "Session")
     team_name    = st.session_state.get("current_team_name", "Team")
-    st.title(session_name)
-    st.caption(f"Team: {team_name}")
+    session_id   = st.session_state["current_session_id"]
+
+    items = get_backlog_items(session_id)
 
     if st.session_state.pop("item_submitted", None):
-        st.success("Assessment complete.")
+        st.success("Item assessed and added.")
     if st.session_state.pop("item_deleted", None):
         st.success(st.session_state.pop("item_deleted_name", "Item deleted."))
 
-    session_id = st.session_state["current_session_id"]
-    items      = get_backlog_items(session_id)
+    # ── Header row ────────────────────────────────────────────────────────────
+    col_hdr, col_start = st.columns([8, 2])
+    with col_hdr:
+        st.title(session_name)
+        st.caption(f"Team: {team_name}  |  Status: Preparing")
+    with col_start:
+        st.write("")
+        st.write("")
+        start_disabled = len(items) == 0
+        if st.button("Start Session", disabled=start_disabled,
+                     use_container_width=True, type="primary",
+                     key="btn_start_session"):
+            update_session_status(session_id, "in_progress")
+            st.session_state["page"] = "run_session"
+            st.rerun()
+        if start_disabled:
+            st.caption("Requires at least one assessed item.")
 
-    with st.expander("How to use this page"):
-        st.markdown("""
-- Enter a backlog item's details and click **Run Assessment** to get an AI evaluation.
-- Gemini evaluates the item against Mike Cohn's 14-point refinement checklist.
-- Each item receives a **Clarity Gradient** rating (High / Moderate / Low) and a
-  **Refinement Threshold** zone (Too Vague / Refinement Zone / Over-Refined).
-- Only the Title is required — the more detail you provide, the better the evaluation.
-- All assessed items for this session are shown below the form.
-        """)
+    st.divider()
 
-    with st.expander("Submit New Item for Assessment", expanded=True):
-        with st.form("assessment_form"):
-            title               = st.text_input("Title *")
-            description         = st.text_area("Description", height=100,
-                                               placeholder="What needs to be done and why (the problem being solved)")
-            acceptance_criteria = st.text_area("Acceptance Criteria", height=100,
-                                               placeholder="What must be true for this item to be considered complete")
-            dependencies        = st.text_input("Dependencies",
-                                               placeholder="Other items or systems this relies on")
-            assumptions         = st.text_input("Assumptions",
-                                               placeholder="What the team is taking as given")
-            notes               = st.text_area("Notes", height=80,
-                                              placeholder="Anything else relevant")
-            submitted = st.form_submit_button("Run Assessment")
+    # ── Toolbar ───────────────────────────────────────────────────────────────
+    show_add = st.session_state.get("show_add_item", False)
+    if st.button("+ Add Item", key="btn_toggle_add"):
+        st.session_state["show_add_item"] = not show_add
+        st.rerun()
 
-        if submitted:
-            if not title.strip():
-                st.warning("Title is required.")
-            else:
-                with st.spinner("Evaluating with Claude..."):
-                    try:
-                        clarity, zone, output = run_claude_evaluation(
-                            title.strip(), description, acceptance_criteria,
-                            dependencies, assumptions, notes,
-                        )
-                        create_backlog_item(
-                            session_id, title.strip(), description, acceptance_criteria,
-                            dependencies, assumptions, notes, clarity, zone, output,
-                        )
-                        st.session_state["item_submitted"] = True
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Assessment failed: {e}")
+    # ── Add Item panel ────────────────────────────────────────────────────────
+    if st.session_state.get("show_add_item"):
+        with st.container(border=True):
+            st.subheader("Add Backlog Item")
+            with st.form("add_item_form"):
+                title               = st.text_input("Title *")
+                description         = st.text_area("Description", height=100,
+                                                   placeholder="What needs to be done and why")
+                acceptance_criteria = st.text_area("Acceptance Criteria", height=100,
+                                                   placeholder="What must be true for this item to be considered complete")
+                dependencies        = st.text_input("Dependencies",
+                                                   placeholder="Other items or systems this relies on")
+                assumptions         = st.text_input("Assumptions",
+                                                   placeholder="What the team is taking as given")
+                notes               = st.text_area("Notes", height=80,
+                                                  placeholder="Anything else relevant")
+                btn_col1, btn_col2 = st.columns([3, 1])
+                submitted = btn_col1.form_submit_button("Run Assessment", type="primary",
+                                                        use_container_width=True)
+                cancelled = btn_col2.form_submit_button("Cancel", use_container_width=True)
 
+            if cancelled:
+                st.session_state["show_add_item"] = False
+                st.rerun()
+
+            if submitted:
+                if not title.strip():
+                    st.warning("Title is required.")
+                else:
+                    with st.spinner("Evaluating with Claude..."):
+                        try:
+                            clarity, zone, output = run_claude_evaluation(
+                                title.strip(), description, acceptance_criteria,
+                                dependencies, assumptions, notes,
+                            )
+                            create_backlog_item(
+                                session_id, title.strip(), description,
+                                acceptance_criteria, dependencies, assumptions,
+                                notes, clarity, zone, output,
+                            )
+                            st.session_state["item_submitted"] = True
+                            st.session_state["show_add_item"]  = False
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Assessment failed: {e}")
+
+    # ── Items table ───────────────────────────────────────────────────────────
     if not items:
-        st.info("No items assessed in this session yet.")
+        st.info("No items yet. Click '+ Add Item' to add and assess your first backlog item.")
         return
 
     st.divider()
-    st.subheader("Assessed Items")
+    st.subheader(f"Assessed Items ({len(items)})")
+
+    # Column header row
+    h1, h2, h3, h4, h5 = st.columns([5, 2, 2, 2, 1])
+    h1.markdown("**Item**")
+    h2.markdown("**Clarity**")
+    h3.markdown("**Refinement**")
+    h4.markdown("**Assessed**")
+    h5.markdown("")
+    st.markdown("---")
 
     for item in items:
-        clarity = item.get("clarity_gradient", "")
-        zone    = item.get("threshold_zone", "")
-        label   = f"{item['title']}   |   {clarity}   |   {zone}"
+        clarity_full  = item.get("clarity_gradient", "")
+        zone          = item.get("threshold_zone", "")
+        # "High Clarity" → "High", "Moderate Clarity" → "Moderate", etc.
+        clarity_short = clarity_full.replace(" Clarity", "")
+        assessed_str  = _format_assessed_date(item.get("created_at", ""))
 
-        with st.expander(label):
-            c1, c2 = st.columns(2)
-            c1.markdown(f"**Clarity Gradient:** {clarity}")
-            c2.markdown(f"**Refinement Threshold:** {zone}")
-            st.markdown("---")
+        c1, c2, c3, c4, c5 = st.columns([5, 2, 2, 2, 1])
+        c1.write(f"**{item['title']}**")
+        c2.markdown(_clarity_badge(clarity_short), unsafe_allow_html=True)
+        c3.markdown(_zone_badge(zone), unsafe_allow_html=True)
+        c4.write(assessed_str)
+        if c5.button("Del", key=f"del_{item['id']}", help="Delete this item"):
+            _dialog_delete_item(item)
 
+        with st.expander("View full assessment"):
             if item.get("gemini_output"):
                 st.markdown(item["gemini_output"])
-
             st.markdown("---")
-            if st.button("Delete this item", key=f"del_item_{item['id']}"):
+            if st.button("Delete this item", key=f"del_full_{item['id']}"):
                 _dialog_delete_item(item)
 
 
@@ -927,13 +1005,13 @@ def main():
                 page_teams()
             else:
                 page_sessions()
-        elif page == "assessment":
+        elif page in ("prepare", "assessment"):
             if not team_id:
                 page_teams()
             elif not session_id:
                 page_sessions()
             else:
-                page_assessment()
+                page_prepare()
         else:
             page_teams()
 
