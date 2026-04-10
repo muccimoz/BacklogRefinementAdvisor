@@ -1548,87 +1548,6 @@ def page_summary():
         st.rerun()
 
 
-def page_jira_test():
-    st.title("Jira API — Connection Test")
-    st.caption("Temporary test page — will be removed after integration is confirmed.")
-    st.divider()
-
-    jira_url   = st.secrets.get("jira_url", "")
-    jira_email = st.secrets.get("jira_email", "")
-    jira_token = st.secrets.get("jira_api_token", "")
-
-    if not all([jira_url, jira_email, jira_token]):
-        st.error("Jira secrets are not fully configured. Check jira_url, jira_email, and jira_api_token in Streamlit secrets.")
-        return
-
-    # ── Step 1: connection check ──────────────────────────────────────────────
-    st.subheader("Step 1 — Connection")
-    if st.button("Test Connection", key="btn_jira_connect"):
-        try:
-            resp = httpx.get(
-                f"{jira_url}/rest/api/3/myself",
-                auth=(jira_email, jira_token),
-                timeout=10,
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                st.success(f"Connected as: {data.get('displayName', '')} ({data.get('emailAddress', '')})")
-            else:
-                st.error(f"Connection failed — HTTP {resp.status_code}: {resp.text[:300]}")
-        except Exception as e:
-            st.error(f"Connection error: {e}")
-
-    st.divider()
-
-    # ── Step 2: JQL query test ────────────────────────────────────────────────
-    st.subheader("Step 2 — Fetch Issues")
-    jql = st.text_input(
-        "JQL Query",
-        value='project = "YOUR_PROJECT" ORDER BY created DESC',
-        help="Replace YOUR_PROJECT with your Jira project key",
-    )
-    max_results = st.slider("Max results to fetch", min_value=1, max_value=20, value=5)
-
-    if st.button("Run Query", key="btn_jira_query"):
-        if not jql.strip():
-            st.warning("Enter a JQL query.")
-        else:
-            with st.spinner("Querying Jira..."):
-                try:
-                    resp = httpx.get(
-                        f"{jira_url}/rest/api/3/search/jql",
-                        auth=(jira_email, jira_token),
-                        params={
-                            "jql":        jql.strip(),
-                            "maxResults": max_results,
-                            "fields":     "summary,description,issuetype,status",
-                        },
-                        timeout=15,
-                    )
-                    if resp.status_code == 200:
-                        data   = resp.json()
-                        issues = data.get("issues", [])
-                        total  = data.get("total") or data.get("totalCount") or len(issues)
-                        st.success(f"Found {total} total issues. Showing first {len(issues)}.")
-                        for issue in issues:
-                            key     = issue.get("key", "")
-                            fields  = issue.get("fields", {})
-                            summary = fields.get("summary", "(no summary)")
-                            itype   = fields.get("issuetype", {}).get("name", "")
-                            status  = fields.get("status", {}).get("name", "")
-                            with st.expander(f"{key}  —  {summary}"):
-                                st.markdown(f"**Type:** {itype}  |  **Status:** {status}")
-                                desc = fields.get("description")
-                                if desc:
-                                    st.markdown("**Description (raw ADF):**")
-                                    st.json(desc)
-                                else:
-                                    st.caption("No description.")
-                    else:
-                        st.error(f"Query failed — HTTP {resp.status_code}: {resp.text[:400]}")
-                except Exception as e:
-                    st.error(f"Query error: {e}")
-
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 def show_sidebar():
@@ -1673,10 +1592,6 @@ def show_sidebar():
                     st.session_state["page"] = "sessions"
                     st.rerun()
 
-        st.markdown("---")
-        if st.button("Jira Test", use_container_width=True):
-            st.session_state["page"] = "jira_test"
-            st.rerun()
         st.markdown("---")
         if st.button("Log Out", use_container_width=True):
             do_logout()
@@ -1755,8 +1670,6 @@ def main():
                 page_sessions()
             else:
                 page_summary()
-        elif page == "jira_test":
-            page_jira_test()
         else:
             page_teams()
 
