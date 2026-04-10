@@ -29,6 +29,15 @@ section[data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] * {colo
 """, unsafe_allow_html=True)
 
 
+# ── Constants ─────────────────────────────────────────────────────────────────
+OUTCOME_OPTIONS = [
+    ("Ready for Sprint",        "#27ae60"),
+    ("Needs More Refinement",   "#2980b9"),
+    ("Return to Product Owner", "#e67e22"),
+    ("Defer",                   "#7f8c8d"),
+    ("Split Required",          "#8e44ad"),
+]
+
 # ── Supabase client ────────────────────────────────────────────────────────────
 def get_supabase() -> Client:
     if "supabase_client" not in st.session_state:
@@ -351,6 +360,16 @@ def create_backlog_item(session_id, title, description, acceptance_criteria,
 
 def delete_backlog_item(item_id: str):
     db().table("backlog_items").delete().eq("id", item_id).execute()
+
+
+def update_backlog_item_outcome(item_id: str, outcome: str, outcome_notes: str):
+    try:
+        db().table("backlog_items").update({
+            "outcome":       outcome or None,
+            "outcome_notes": outcome_notes or None,
+        }).eq("id", item_id).execute()
+    except Exception as e:
+        st.error(f"Failed to save outcome: {e}")
 
 
 def get_session(session_id: str) -> dict | None:
@@ -763,6 +782,7 @@ def page_sessions():
         if col_open.button("Open", key=f"open_sess_{session['id']}"):
             st.session_state["current_session_id"]   = session["id"]
             st.session_state["current_session_name"] = session["name"]
+            st.session_state["run_item_index"]        = 0
             st.session_state["page"] = "prepare" if status == "preparing" else "run_session"
             st.rerun()
 
@@ -819,7 +839,8 @@ def page_prepare():
                      use_container_width=True, type="primary",
                      key="btn_start_session"):
             update_session_status(session_id, "in_progress")
-            st.session_state["page"] = "run_session"
+            st.session_state["run_item_index"] = 0
+            st.session_state["page"]           = "run_session"
             st.rerun()
         if start_disabled:
             st.caption("Requires at least one assessed item.")
@@ -916,6 +937,113 @@ def page_prepare():
             st.markdown("---")
             if st.button("Delete this item", key=f"del_full_{item['id']}"):
                 _dialog_delete_item(item)
+
+
+def page_run_session():
+    session_name = st.session_state.get("current_session_name", "Session")
+    team_name    = st.session_state.get("current_team_name", "Team")
+    session_id   = st.session_state["current_session_id"]
+
+    # Oldest-first so items are reviewed in the order they were added
+    all_items = list(reversed(get_backlog_items(session_id)))
+
+    if not all_items:
+        st.warning("No items in this session.")
+        if st.button("Back to Prepare"):
+            st.session_state["page"] = "prepare"
+            st.rerun()
+        return
+
+    total = len(all_items)
+    idx   = st.session_state.get("run_item_index", 0)
+    idx   = max(0, min(idx, total - 1))
+    item  = all_items[idx]
+
+    if st.session_state.pop("outcome_saved", None):
+        st.success("Outcome saved.")
+
+    # ── Header ────────────────────────────────────────────────────────────────
+    col_hdr, col_summary = st.columns([8, 2])
+    with col_hdr:
+        st.title(session_name)
+        st.caption(f"Team: {team_name}  |  Item {idx + 1} of {total}")
+    with col_summary:
+        st.write("")
+        st.write("")
+        if st.button("View Summary", use_container_width=True, key="btn_view_summary"):
+            st.session_state["page"] = "summary"
+            st.rerun()
+
+    # ── Progress dots ─────────────────────────────────────────────────────────
+    outcome_color_map = {label: color for label, color in OUTCOME_OPTIONS}
+    dots = []
+    for i, it in enumerate(all_items):
+        color  = outcome_color_map.get(it.get("outcome", ""), "#bdc3c7")
+        border = "3px solid #2c3e50" if i == idx else "3px solid transparent"
+        dots.append(
+            f'<span style="display:inline-block;width:14px;height:14px;border-radius:50%;'
+            f'background:{color};border:{border};margin:2px 3px;vertical-align:middle"></span>'
+        )
+    st.markdown(" ".join(dots), unsafe_allow_html=True)
+    st.divider()
+
+    # ── Item detail ───────────────────────────────────────────────────────────
+    st.subheader(item["title"])
+
+    clarity_short = item.get("clarity_gradient", "").replace(" Clarity", "")
+    zone          = item.get("threshold_zone", "")
+
+    b1, b2, _ = st.columns([2, 2, 6])
+    b1.markdown(_clarity_badge(clarity_short), unsafe_allow_html=True)
+    b2.markdown(_zone_badge(zone),             unsafe_allow_html=True)
+
+    st.write("")
+    if item.get("gemini_output"):
+        st.markdown(item["gemini_output"])
+
+    st.divider()
+
+    # ── Outcome panel ─────────────────────────────────────────────────────────
+    st.markdown("**Team Decision**")
+
+    current_outcome = item.get("outcome") or ""
+    current_notes   = item.get("outcome_notes") or ""
+
+    notes_val = st.text_input(
+        "Notes (optional)",
+        value=current_notes,
+        key=f"notes_{item['id']}",
+        placeholder="Optional facilitator note",
+    )
+
+    oc1, oc2, oc3, oc4, oc5 = st.columns(5)
+    for col, (label, _) in zip([oc1, oc2, oc3, oc4, oc5], OUTCOME_OPTIONS):
+        btn_type = "primary" if current_outcome == label else "secondary"
+        if col.button(label, key=f"out_{item['id']}_{label}",
+                      use_container_width=True, type=btn_type):
+            update_backlog_item_outcome(
+                item["id"], label,
+                st.session_state.get(f"notes_{item['id']}", ""),
+            )
+            st.session_state["outcome_saved"] = True
+            st.rerun()
+
+    # ── Navigation ────────────────────────────────────────────────────────────
+    st.write("")
+    nav1, nav2, nav3 = st.columns([2, 6, 2])
+
+    if nav1.button("Prev", disabled=(idx == 0), use_container_width=True):
+        st.session_state["run_item_index"] = idx - 1
+        st.rerun()
+
+    nav2.markdown(
+        f'<div style="text-align:center;padding-top:8px">{idx + 1} of {total}</div>',
+        unsafe_allow_html=True,
+    )
+
+    if nav3.button("Next", disabled=(idx == total - 1), use_container_width=True):
+        st.session_state["run_item_index"] = idx + 1
+        st.rerun()
 
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
@@ -1025,6 +1153,13 @@ def main():
                 page_sessions()
             else:
                 page_prepare()
+        elif page == "run_session":
+            if not team_id:
+                page_teams()
+            elif not session_id:
+                page_sessions()
+            else:
+                page_run_session()
         else:
             page_teams()
 
