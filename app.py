@@ -1062,33 +1062,20 @@ def page_teams():
     if st.session_state.pop("team_renamed_success", None):
         st.success("Team renamed.")
 
-    # ── Page-level styles ─────────────────────────────────────────────────────
-    st.markdown("""
-<style>
-[data-testid="stVerticalBlockBorderWrapper"] {
-    background: #fff !important;
-    border: 1px solid #e0e3e8 !important;
-    border-radius: 10px !important;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.07) !important;
-    padding: 20px !important;
-}
-[data-testid="stVerticalBlockBorderWrapper"] > div {
-    gap: 8px !important;
-}
-[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stButton"],
-[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stHorizontalBlock"] {
-    margin-top: 0 !important;
-    margin-bottom: 0 !important;
-}
-[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stColumn"]:last-of-type
-    button[data-testid="stBaseButton-secondary"] {
-    color: #c62828 !important;
-    border-color: #ef9a9a !important;
-}
-</style>
-""", unsafe_allow_html=True)
-
     teams = get_teams_with_counts()
+    sid   = st.session_state.get("session_id", "")
+    q     = f"sid={sid}&" if sid else ""
+
+    # ── Handle pending dialogs (triggered via HTML card links) ───────────────
+    if pending_rename := st.session_state.pop("pending_team_rename_id", None):
+        team_obj = next((t for t in teams if str(t["id"]) == str(pending_rename)), None)
+        if team_obj:
+            _dialog_rename_team(team_obj)
+
+    if pending_delete := st.session_state.pop("pending_team_delete_id", None):
+        team_obj = next((t for t in teams if str(t["id"]) == str(pending_delete)), None)
+        if team_obj:
+            _dialog_delete_team(team_obj)
 
     # ── Page header ──────────────────────────────────────────────────────────
     hcol, bcol = st.columns([7, 2])
@@ -1137,42 +1124,46 @@ def page_teams():
 
     st.write("")
 
+    # ── Team card grid (pure HTML for reliable styling) ───────────────────────
     cols = st.columns(3)
     for i, team in enumerate(teams):
-        count = team.get("session_count", 0)
+        count       = team.get("session_count", 0)
+        tid         = _html.escape(str(team["id"]))
+        tname       = _html.escape(team["name"])
+        count_label = f'{count} session{"s" if count != 1 else ""}'
         with cols[i % 3]:
-            with st.container(border=True):
-                st.markdown(
-                    f'<div style="font-size:16px;font-weight:700;color:#1e2a3a;'
-                    f'margin-bottom:4px">{_html.escape(team["name"])}</div>'
-                    f'<div style="font-size:12px;color:#aaa;margin-bottom:8px">'
-                    f'{count} session{"s" if count != 1 else ""}</div>',
-                    unsafe_allow_html=True,
-                )
-                if st.button("Open", key=f"open_{team['id']}",
-                             use_container_width=True, type="primary"):
-                    st.session_state["current_team_id"]   = team["id"]
-                    st.session_state["current_team_name"] = team["name"]
-                    st.session_state["page"]              = "sessions"
-                    st.rerun()
-                b1, b2 = st.columns(2)
-                if b1.button("Rename", key=f"rename_{team['id']}",
-                             use_container_width=True):
-                    _dialog_rename_team(team)
-                if b2.button("Delete", key=f"delete_{team['id']}",
-                             use_container_width=True):
-                    _dialog_delete_team(team)
+            st.markdown(
+                f'<div style="background:#fff;border:1px solid #e0e3e8;border-radius:10px;'
+                f'box-shadow:0 1px 4px rgba(0,0,0,0.07);padding:20px">'
+                f'<div style="font-size:16px;font-weight:700;color:#1e2a3a;margin-bottom:4px">'
+                f'{tname}</div>'
+                f'<div style="font-size:12px;color:#aaa;margin-bottom:16px">{count_label}</div>'
+                f'<a href="?{q}_team={tid}" target="_self"'
+                f' style="display:block;text-align:center;background:#1565C0;color:#fff;'
+                f'text-decoration:none;padding:9px 0;border-radius:6px;'
+                f'font-size:13px;font-weight:600;margin-bottom:10px">Open</a>'
+                f'<div style="display:flex;gap:8px">'
+                f'<a href="?{q}_team_action=rename_team&tid={tid}" target="_self"'
+                f' style="flex:1;text-align:center;background:#fff;color:#1e2a3a;'
+                f'text-decoration:none;padding:8px 0;border-radius:6px;'
+                f'font-size:13px;font-weight:600;border:1px solid #d0d4db">Rename</a>'
+                f'<a href="?{q}_team_action=delete_team&tid={tid}" target="_self"'
+                f' style="flex:1;text-align:center;background:#fff;color:#c62828;'
+                f'text-decoration:none;padding:8px 0;border-radius:6px;'
+                f'font-size:13px;font-weight:600;border:1px solid #ef9a9a">Delete</a>'
+                f'</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
 
     # ── Dashed "Add New Team" card in next grid slot ──────────────────────────
     next_idx = len(teams) % 3
     if next_idx == 0:
-        new_cols = st.columns(3)
+        new_cols   = st.columns(3)
         target_col = new_cols[0]
     else:
         target_col = cols[next_idx]
 
-    sid = st.session_state.get("session_id", "")
-    q   = f"sid={sid}&" if sid else ""
     with target_col:
         st.markdown(
             f'<a href="?{q}_team_action=add_team" target="_self"'
@@ -1813,14 +1804,21 @@ def show_topnav():
     sess_name = st.session_state.get("current_session_name", "")
     sid       = st.session_state.get("session_id", "")
 
-    # ── Handle team action params (e.g. dashed card click) ───────────────────
+    # ── Handle team action params (card links → dialogs / forms) ────────────
     team_action = st.query_params.get("_team_action", "")
-    if team_action == "add_team":
-        try:
-            del st.query_params["_team_action"]
-        except Exception:
-            pass
-        st.session_state["show_add_team"] = True
+    tid         = st.query_params.get("tid", "")
+    if team_action in ("add_team", "rename_team", "delete_team"):
+        for k in ("_team_action", "tid"):
+            try:
+                del st.query_params[k]
+            except Exception:
+                pass
+        if team_action == "add_team":
+            st.session_state["show_add_team"] = True
+        elif team_action == "rename_team":
+            st.session_state["pending_team_rename_id"] = tid
+        elif team_action == "delete_team":
+            st.session_state["pending_team_delete_id"] = tid
         st.session_state["page"] = "teams"
         st.rerun()
         return
