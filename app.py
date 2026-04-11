@@ -2,6 +2,7 @@ import csv
 import html as _html
 import io
 import time
+from urllib.parse import quote as _url_quote
 import streamlit as st
 import httpx
 import anthropic
@@ -1691,43 +1692,55 @@ def page_run_session():
     if st.session_state.pop("outcome_saved", None):
         st.success("Outcome saved.")
 
-    # ── Dark topbar ───────────────────────────────────────────────────────────
+    # ── Page header ───────────────────────────────────────────────────────────
     sid = st.session_state.get("session_id", "")
     q   = f"sid={sid}&" if sid else ""
 
     outcome_color_map = {label: color for label, color in OUTCOME_OPTIONS}
     dots_html = ""
     for i, it in enumerate(all_items):
-        color  = outcome_color_map.get(it.get("outcome", ""), "#3d5166")
-        border = "3px solid #fff" if i == idx else "3px solid transparent"
-        dots_html += (
-            f'<span style="display:inline-block;width:12px;height:12px;border-radius:50%;'
-            f'background:{color};border:{border};margin:0 3px;vertical-align:middle"></span>'
-        )
+        color = outcome_color_map.get(it.get("outcome", ""), "#bdc3c7")
+        if i == idx:
+            dot_style = (
+                f"width:14px;height:14px;border-radius:50%;background:#fff;"
+                f"border:3px solid #2c3e50;box-shadow:0 0 0 1px #2c3e50;"
+                f"display:inline-block"
+            )
+        else:
+            dot_style = (
+                f"width:14px;height:14px;border-radius:50%;background:{color};"
+                f"border:3px solid {color};display:inline-block"
+            )
+        dots_html += f'<span style="{dot_style};margin-right:6px"></span>'
 
-    st.markdown(f"""
-<div style="background:#1e2a3a;color:#fff;padding:14px 20px;border-radius:10px;
-            margin-bottom:16px;display:flex;align-items:center;
-            justify-content:space-between;box-shadow:0 2px 8px rgba(0,0,0,0.15)">
-  <div style="min-width:0;flex:1">
-    <div style="font-size:15px;font-weight:700;overflow:hidden;text-overflow:ellipsis;
-                white-space:nowrap">{_html.escape(session_name)}</div>
-    <div style="font-size:12px;color:#90CAF9;margin-top:2px">{_html.escape(team_name)}</div>
-  </div>
-  <div style="text-align:center;flex-shrink:0;padding:0 24px">
-    <div style="font-size:11px;color:#aaa;margin-bottom:6px">Item {idx + 1} of {total}</div>
-    <div>{dots_html}</div>
-  </div>
-  <a href="?{q}_nav=view_summary" target="_self"
-     style="background:#1565C0;color:#fff;text-decoration:none;font-size:12px;
-            font-weight:600;padding:7px 14px;border-radius:6px;
-            white-space:nowrap;flex-shrink:0">View Summary</a>
-</div>
-""", unsafe_allow_html=True)
+    hcol, bcol = st.columns([7, 2])
+    hcol.markdown(
+        f'<h1 style="margin:0 0 4px 0;color:#1e2a3a;font-size:26px;font-weight:700">'
+        f'{_html.escape(session_name)}</h1>'
+        f'<p style="margin:0 0 10px 0;color:#888;font-size:13px">'
+        f'Team: {_html.escape(team_name)}&nbsp;|&nbsp;Item {idx + 1} of {total}</p>'
+        f'<div style="display:flex;gap:0;align-items:center">{dots_html}</div>',
+        unsafe_allow_html=True,
+    )
+    bcol.markdown(
+        f'<div style="text-align:right;padding-top:6px">'
+        f'<a href="?{q}_nav=view_summary" target="_self"'
+        f' style="display:inline-block;background:#1565C0;color:#fff;'
+        f'text-decoration:none;font-size:13px;font-weight:600;'
+        f'padding:9px 20px;border-radius:6px">View Summary</a></div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<hr style="border:none;border-top:1px solid #dde1e7;margin:16px 0">',
+        unsafe_allow_html=True,
+    )
 
     # ── Item title ────────────────────────────────────────────────────────────
-    st.subheader(item["title"])
-    st.write("")
+    st.markdown(
+        f'<div style="font-size:20px;font-weight:700;color:#1e2a3a;margin:0 0 16px 0">'
+        f'{_html.escape(item["title"])}</div>',
+        unsafe_allow_html=True,
+    )
 
     # ── Rating cards + overall callout ────────────────────────────────────────
     clarity_short = item.get("clarity_gradient", "").replace(" Clarity", "")
@@ -1751,40 +1764,60 @@ def page_run_session():
     if mistakes_html:
         st.markdown(mistakes_html, unsafe_allow_html=True)
 
-    # ── Full checklist (always visible, 2-column layout) ─────────────────────
+    # ── Checklist — collapsible expander ─────────────────────────────────────
     if sections.get("checklist"):
-        st.divider()
-        groups = _split_checklist_groups(sections["checklist"])
-        if len(groups) >= 2:
-            left_col, right_col = st.columns(2)
-            with left_col:
-                for g in groups[:2]:
-                    st.markdown(g)
-            with right_col:
-                for g in groups[2:]:
-                    st.markdown(g)
-        else:
-            st.markdown(sections["checklist"])
+        st.markdown(
+            '<hr style="border:none;border-top:1px solid #dde1e7;margin:16px 0">',
+            unsafe_allow_html=True,
+        )
+        with st.expander("View full checklist detail"):
+            groups = _split_checklist_groups(sections["checklist"])
+            if len(groups) >= 2:
+                left_col, right_col = st.columns(2)
+                with left_col:
+                    for g in groups[:2]:
+                        st.markdown(g)
+                with right_col:
+                    for g in groups[2:]:
+                        st.markdown(g)
+            else:
+                st.markdown(sections["checklist"])
 
-    st.divider()
+    st.markdown(
+        '<hr style="border:none;border-top:1px solid #dde1e7;margin:16px 0">',
+        unsafe_allow_html=True,
+    )
 
     # ── Outcome panel ─────────────────────────────────────────────────────────
-    st.markdown("**Team Decision**")
-
     current_outcome = item.get("outcome") or ""
     current_notes   = item.get("outcome_notes") or ""
+    item_id_s       = _html.escape(str(item["id"]))
 
-    oc1, oc2, oc3, oc4, oc5 = st.columns(5)
-    for col, (label, _) in zip([oc1, oc2, oc3, oc4, oc5], OUTCOME_OPTIONS):
-        btn_type = "primary" if current_outcome == label else "secondary"
-        if col.button(label, key=f"out_{item['id']}_{label}",
-                      use_container_width=True, type=btn_type):
-            update_backlog_item_outcome(
-                item["id"], label,
-                st.session_state.get(f"notes_{item['id']}", ""),
-            )
-            st.session_state["outcome_saved"] = True
-            st.rerun()
+    st.markdown(
+        '<div style="font-size:12px;font-weight:700;text-transform:uppercase;'
+        'letter-spacing:0.5px;color:#666;margin-bottom:10px">Team Decision</div>',
+        unsafe_allow_html=True,
+    )
+
+    btns_html = '<div style="display:flex;gap:8px;flex-wrap:nowrap;margin-bottom:12px">'
+    for label, color in OUTCOME_OPTIONS:
+        selected = (current_outcome == label)
+        href     = (f"?{q}_run_action=set_outcome"
+                    f"&item_id={item_id_s}"
+                    f"&outcome={_url_quote(label, safe='')}")
+        if selected:
+            style = (f"text-decoration:none;display:inline-block;flex:1;text-align:center;"
+                     f"border:2px solid {color};border-radius:20px;padding:7px 14px;"
+                     f"font-size:12px;font-weight:600;white-space:nowrap;"
+                     f"background:{color};color:#fff")
+        else:
+            style = (f"text-decoration:none;display:inline-block;flex:1;text-align:center;"
+                     f"border:2px solid {color};border-radius:20px;padding:7px 14px;"
+                     f"font-size:12px;font-weight:600;white-space:nowrap;"
+                     f"background:#fff;color:{color}")
+        btns_html += f'<a href="{href}" target="_self" style="{style}">{label}</a>'
+    btns_html += '</div>'
+    st.markdown(btns_html, unsafe_allow_html=True)
 
     # ── Notes + navigation on one row ─────────────────────────────────────────
     note_col, ctr_col, prev_col, next_col = st.columns([7, 1, 1, 1])
@@ -1967,6 +2000,23 @@ def show_topnav():
                 pass
         if item_action == "delete_item" and item_id_val:
             st.session_state["pending_item_delete_id"] = item_id_val
+        st.rerun()
+        return
+
+    # ── Handle run-session outcome saves ─────────────────────────────────────
+    run_action  = st.query_params.get("_run_action", "")
+    run_item_id = st.query_params.get("item_id",     "")
+    run_outcome = st.query_params.get("outcome",     "")
+    if run_action in ("set_outcome",):
+        for k in ("_run_action", "item_id", "outcome"):
+            try:
+                del st.query_params[k]
+            except Exception:
+                pass
+        if run_item_id and run_outcome:
+            notes = st.session_state.get(f"notes_{run_item_id}", "")
+            update_backlog_item_outcome(run_item_id, run_outcome, notes)
+            st.session_state["outcome_saved"] = True
         st.rerun()
         return
 
