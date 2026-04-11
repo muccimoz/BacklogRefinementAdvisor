@@ -1,4 +1,5 @@
 import csv
+import html as _html
 import io
 import time
 import streamlit as st
@@ -10,23 +11,20 @@ from supabase import create_client, Client
 st.set_page_config(
     page_title="Backlog Refinement Advisor",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
-# ── Hide Streamlit chrome ──────────────────────────────────────────────────────
+# ── Hide Streamlit chrome (runs on every render, including login) ──────────────
 st.markdown("""
 <style>
-#MainMenu  {visibility: hidden;}
-footer     {visibility: hidden;}
-header     {visibility: hidden;}
-section[data-testid="stSidebar"] {background-color: #1e2a3a;}
-section[data-testid="stSidebar"] * {color: #ffffff !important;}
-section[data-testid="stSidebar"] .stButton > button {
-    background-color: #2c3e50 !important; color: #ffffff !important; border: none;
-    width: 100%; text-align: left;
-}
-section[data-testid="stSidebar"] .stButton > button:hover {background-color: #34495e !important;}
-section[data-testid="stSidebar"] .stSelectbox div[data-baseweb="select"] * {color: #000000 !important;}
+#MainMenu  { visibility: hidden; }
+footer     { visibility: hidden; }
+header     { display: none !important; }
+[data-testid="stSidebar"]        { display: none !important; }
+[data-testid="collapsedControl"] { display: none !important; }
+[data-testid="stToolbar"]        { display: none !important; }
+[data-testid="stDecoration"]     { display: none !important; }
+[data-testid="stStatusWidget"]   { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1645,53 +1643,176 @@ def page_summary():
 
 
 
-# ── Sidebar ────────────────────────────────────────────────────────────────────
-def show_sidebar():
-    with st.sidebar:
-        st.markdown("### Backlog Refinement Advisor")
-        st.markdown("---")
+# ── Top navigation ─────────────────────────────────────────────────────────────
+def _build_team_options_html(q: str, current_team_id: str) -> str:
+    """Return an HTML <select> (or plain text) for the team breadcrumb slot."""
+    try:
+        teams = get_teams()
+    except Exception:
+        teams = []
+    if not teams:
+        name = _html.escape(st.session_state.get("current_team_name", "Team"))
+        return f'<span style="color:#90CAF9;font-size:13px;font-weight:600">{name}</span>'
+    opts = ""
+    for t in teams:
+        sel   = "selected" if t["id"] == current_team_id else ""
+        label = _html.escape(t["name"])
+        opts += f'<option value="{t["id"]}" {sel}>{label}</option>'
+    return (
+        f'<select class="tn-select" '
+        f'onchange="window.location=\'?{q}_team=\'+encodeURIComponent(this.value)">'
+        f'{opts}</select>'
+    )
 
-        if st.button("Your Teams", use_container_width=True):
-            st.session_state["page"] = "teams"
+
+def show_topnav():
+    """Render the fixed top navigation bar (replaces sidebar)."""
+    page      = st.session_state.get("page", "teams")
+    email     = _html.escape(st.session_state.get("user_email", ""))
+    team_id   = st.session_state.get("current_team_id", "")
+    sess_name = st.session_state.get("current_session_name", "")
+    sid       = st.session_state.get("session_id", "")
+
+    # ── Handle nav-click redirects (query params set by HTML links) ───────────
+    nav_dest  = st.query_params.get("_nav",  "")
+    team_dest = st.query_params.get("_team", "")
+
+    if nav_dest or team_dest:
+        for k in ["_nav", "_team"]:
+            try:
+                del st.query_params[k]
+            except Exception:
+                pass
+
+        if nav_dest == "logout":
+            do_logout()
             st.rerun()
+            return
 
-        teams         = get_teams()
-        current_page  = st.session_state.get("page", "teams")
-        on_teams_page = current_page == "teams"
-
-        if teams and not on_teams_page:
-            team_ids   = [t["id"] for t in teams]
-            current_id = st.session_state.get("current_team_id")
-
-            if st.session_state.get("sidebar_team_sel") not in team_ids:
-                st.session_state["sidebar_team_sel"] = current_id or team_ids[0]
-
-            name_by_id = {t["id"]: t["name"] for t in teams}
-            sel_id = st.selectbox(
-                "Team",
-                options=team_ids,
-                format_func=lambda tid: name_by_id[tid],
-                key="sidebar_team_sel",
-                label_visibility="collapsed",
-            )
-
-            if sel_id != current_id:
-                st.session_state["current_team_id"]   = sel_id
-                st.session_state["current_team_name"] = name_by_id[sel_id]
+        if team_dest:
+            teams_list = get_teams()
+            name_map   = {t["id"]: t["name"] for t in teams_list}
+            if team_dest in name_map:
+                st.session_state["current_team_id"]   = team_dest
+                st.session_state["current_team_name"] = name_map[team_dest]
                 st.session_state.pop("current_session_id",   None)
                 st.session_state.pop("current_session_name", None)
                 st.session_state["page"] = "sessions"
                 st.rerun()
+                return
 
-            if st.session_state.get("current_team_id"):
-                if st.button("Sessions", use_container_width=True):
-                    st.session_state["page"] = "sessions"
-                    st.rerun()
-
-        st.markdown("---")
-        if st.button("Log Out", use_container_width=True):
-            do_logout()
+        if nav_dest == "teams":
+            st.session_state["page"] = "teams"
             st.rerun()
+            return
+        elif nav_dest == "sessions" and team_id:
+            st.session_state["page"] = "sessions"
+            st.rerun()
+            return
+
+    # ── CSS ───────────────────────────────────────────────────────────────────
+    st.markdown("""
+<style>
+.main .block-container {
+    padding-top: 68px !important;
+    padding-left: 32px !important;
+    padding-right: 32px !important;
+    max-width: 1200px !important;
+}
+.tn-bar {
+    position: fixed; top: 0; left: 0; right: 0;
+    height: 52px; background: #1e2a3a; z-index: 9999;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    display: flex; align-items: center;
+    padding: 0 32px; gap: 0;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    box-sizing: border-box;
+}
+.tn-brand {
+    font-size: 14px; font-weight: 700; color: #90CAF9;
+    white-space: nowrap; margin-right: 24px; letter-spacing: 0.3px;
+    text-decoration: none !important;
+}
+.tn-items { display: flex; align-items: center; gap: 2px; flex: 1; overflow: hidden; }
+a.tn-btn {
+    display: inline-block; text-decoration: none !important;
+    font-size: 13px; font-weight: 600;
+    padding: 6px 14px; border-radius: 6px;
+    white-space: nowrap; cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    line-height: 1.3;
+}
+a.tn-active  { background: #1565C0 !important; color: #fff !important; }
+a.tn-inactive { background: none !important; color: #aaa !important; }
+a.tn-inactive:hover { background: #2c3e50 !important; color: #fff !important; }
+span.tn-current {
+    display: inline-block; font-size: 13px; font-weight: 600;
+    padding: 6px 14px; border-radius: 6px;
+    background: #1565C0; color: #fff; white-space: nowrap; line-height: 1.3;
+}
+.tn-sep { color: #3d5166; font-size: 14px; padding: 0 4px; user-select: none; flex-shrink: 0; }
+.tn-select {
+    background: #2c3e50; border: 1px solid #3d5166;
+    color: #fff; font-size: 13px;
+    padding: 5px 10px; border-radius: 6px; cursor: pointer;
+    flex-shrink: 0;
+}
+.tn-right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.tn-user  { font-size: 12px; color: #7f8c8d; white-space: nowrap; }
+a.tn-logout {
+    text-decoration: none !important; white-space: nowrap;
+    background: none; border: 1px solid #3d5166;
+    color: #aaa !important; font-size: 12px; font-weight: 600;
+    padding: 5px 12px; border-radius: 6px; cursor: pointer;
+}
+a.tn-logout:hover { border-color: #aaa; color: #fff !important; }
+</style>
+""", unsafe_allow_html=True)
+
+    # ── Build breadcrumb ──────────────────────────────────────────────────────
+    q = f"sid={sid}&" if sid else ""
+
+    if page == "teams":
+        crumb = '<span class="tn-current">Your Teams</span>'
+
+    elif page == "sessions":
+        team_sel = _build_team_options_html(q, team_id)
+        crumb = (
+            f'<a href="?{q}_nav=teams" target="_self" class="tn-btn tn-inactive">Your Teams</a>'
+            f'<span class="tn-sep">›</span>'
+            f'{team_sel}'
+            f'<span class="tn-sep">›</span>'
+            f'<span class="tn-current">Sessions</span>'
+        )
+
+    elif page in ("prepare", "run_session", "summary"):
+        raw   = sess_name or "Session"
+        label = _html.escape((raw[:22] + "…") if len(raw) > 22 else raw)
+        team_sel = _build_team_options_html(q, team_id)
+        crumb = (
+            f'<a href="?{q}_nav=teams" target="_self" class="tn-btn tn-inactive">Your Teams</a>'
+            f'<span class="tn-sep">›</span>'
+            f'{team_sel}'
+            f'<span class="tn-sep">›</span>'
+            f'<a href="?{q}_nav=sessions" target="_self" class="tn-btn tn-inactive">Sessions</a>'
+            f'<span class="tn-sep">›</span>'
+            f'<span class="tn-current">{label}</span>'
+        )
+
+    else:
+        crumb = '<span class="tn-current">Your Teams</span>'
+
+    # ── Render nav bar HTML ───────────────────────────────────────────────────
+    st.markdown(f"""
+<div class="tn-bar">
+  <span class="tn-brand">Backlog Refinement Advisor</span>
+  <div class="tn-items">{crumb}</div>
+  <div class="tn-right">
+    <span class="tn-user">{email}</span>
+    <a href="?{q}_nav=logout" target="_self" class="tn-logout">Log Out</a>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
@@ -1732,7 +1853,7 @@ def main():
             page_login()
             return
         update_server_session()
-        show_sidebar()
+        show_topnav()
 
         page       = st.session_state.get("page", "teams")
         team_id    = st.session_state.get("current_team_id")
