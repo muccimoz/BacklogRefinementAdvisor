@@ -1,6 +1,7 @@
 import csv
 import html as _html
 import io
+import re
 import time
 from urllib.parse import quote as _url_quote
 import streamlit as st
@@ -723,12 +724,67 @@ def _render_overall_callout_html(text: str) -> str:
 def _render_mistakes_callout_html(text: str) -> str:
     if not text or text.strip().lower().startswith("none detected"):
         return ""
-    return f"""
-<div style="background:#fffde7;border-left:4px solid #f9a825;padding:12px 16px;
-            border-radius:0 6px 6px 0;font-size:13px;color:#555;
-            line-height:1.6;margin-bottom:16px">
-  <strong style="color:#e65100">Common Mistakes Detected:</strong><br>{text}
-</div>"""
+    safe = _html.escape(text)
+    safe = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', safe)
+    safe = safe.replace("\n", "<br>")
+    return (
+        '<div style="background:#fffde7;border-left:4px solid #f9a825;padding:12px 16px;'
+        'border-radius:0 6px 6px 0;font-size:13px;color:#555;'
+        'line-height:1.6;margin-bottom:16px">'
+        '<strong style="color:#e65100">Common Mistakes Detected:</strong><br>'
+        f'{safe}</div>'
+    )
+
+
+def _render_checklist_group_html(group_text: str) -> str:
+    """Render one checklist group as styled HTML with coloured ✔/✗/? and blue questions."""
+    html = ""
+    for line in group_text.split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("### "):
+            heading = _html.escape(stripped[4:].strip())
+            html += (
+                f'<div style="font-size:11px;font-weight:700;text-transform:uppercase;'
+                f'letter-spacing:0.5px;color:#1e2a3a;background:#f0f2f5;'
+                f'padding:5px 8px;border-radius:4px;margin:0 0 8px 0">{heading}</div>'
+            )
+        elif stripped.startswith("✔"):
+            text = _html.escape(stripped[1:].strip())
+            html += (
+                f'<div style="display:flex;gap:7px;align-items:flex-start;margin:5px 0;font-size:13px">'
+                f'<span style="color:#27ae60;flex-shrink:0">✔</span>'
+                f'<span style="color:#333;line-height:1.4">{text}</span></div>'
+            )
+        elif stripped.startswith("✗"):
+            text = _html.escape(stripped[1:].strip())
+            html += (
+                f'<div style="display:flex;gap:7px;align-items:flex-start;margin:5px 0;font-size:13px">'
+                f'<span style="color:#e74c3c;flex-shrink:0">✗</span>'
+                f'<span style="color:#333;line-height:1.4">{text}</span></div>'
+            )
+        elif stripped.startswith("?"):
+            text = _html.escape(stripped[1:].strip())
+            html += (
+                f'<div style="display:flex;gap:7px;align-items:flex-start;margin:5px 0;font-size:13px">'
+                f'<span style="color:#e67e22;flex-shrink:0">?</span>'
+                f'<span style="color:#333;line-height:1.4">{text}</span></div>'
+            )
+        elif line.startswith(" ") or line.startswith("\t"):
+            q = stripped.lstrip("- ").strip()
+            if q:
+                html += (
+                    f'<div style="font-size:12px;color:#1565C0;padding:3px 8px;'
+                    f'border-left:2px solid #90CAF9;margin:4px 0 4px 20px;'
+                    f'line-height:1.4">{_html.escape(q)}</div>'
+                )
+        else:
+            html += (
+                f'<div style="font-size:13px;color:#333;margin:4px 0">'
+                f'{_html.escape(stripped)}</div>'
+            )
+    return html
 
 
 def _render_outcome_count_bar_html(items: list) -> str:
@@ -1776,12 +1832,12 @@ def page_run_session():
                 left_col, right_col = st.columns(2)
                 with left_col:
                     for g in groups[:2]:
-                        st.markdown(g)
+                        st.markdown(_render_checklist_group_html(g), unsafe_allow_html=True)
                 with right_col:
                     for g in groups[2:]:
-                        st.markdown(g)
+                        st.markdown(_render_checklist_group_html(g), unsafe_allow_html=True)
             else:
-                st.markdown(sections["checklist"])
+                st.markdown(_render_checklist_group_html(sections["checklist"]), unsafe_allow_html=True)
 
     st.markdown(
         '<hr style="border:none;border-top:1px solid #dde1e7;margin:16px 0">',
