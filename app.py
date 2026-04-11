@@ -297,6 +297,28 @@ def get_teams() -> list:
         return []
 
 
+def get_teams_with_counts() -> list:
+    try:
+        teams = db().table("teams").select("id, name").eq(
+            "user_id", st.session_state["user_id"]
+        ).order("created_at").execute().data or []
+        if not teams:
+            return []
+        team_ids = [t["id"] for t in teams]
+        sessions = db().table("refinement_sessions").select("team_id").in_(
+            "team_id", team_ids
+        ).execute().data or []
+        count_map: dict = {}
+        for s in sessions:
+            tid = s["team_id"]
+            count_map[tid] = count_map.get(tid, 0) + 1
+        for t in teams:
+            t["session_count"] = count_map.get(t["id"], 0)
+        return teams
+    except Exception:
+        return []
+
+
 def create_team(name: str):
     db().table("teams").insert({
         "user_id": st.session_state["user_id"],
@@ -318,6 +340,32 @@ def get_refinement_sessions(team_id: str) -> list:
             "team_id", team_id
         ).order("created_at", desc=True).execute()
         return r.data or []
+    except Exception:
+        return []
+
+
+def get_refinement_sessions_with_counts(team_id: str) -> list:
+    try:
+        sessions = db().table("refinement_sessions").select(
+            "id, name, status, created_at"
+        ).eq("team_id", team_id).order("created_at", desc=True).execute().data or []
+        if not sessions:
+            return []
+        session_ids = [s["id"] for s in sessions]
+        items = db().table("backlog_items").select("session_id, outcome").in_(
+            "session_id", session_ids
+        ).execute().data or []
+        total_map:  dict = {}
+        tagged_map: dict = {}
+        for item in items:
+            sid = item["session_id"]
+            total_map[sid]  = total_map.get(sid, 0) + 1
+            if item.get("outcome"):
+                tagged_map[sid] = tagged_map.get(sid, 0) + 1
+        for s in sessions:
+            s["item_total"]  = total_map.get(s["id"], 0)
+            s["item_tagged"] = tagged_map.get(s["id"], 0)
+        return sessions
     except Exception:
         return []
 
@@ -475,7 +523,12 @@ THRESHOLD_ZONE: [Too Vague / Ideal / Over-Refined]
 ## Checklist Analysis
 
 ### 1. Shared Understanding
-[For each of the 4 items: one line stating whether it is satisfied, a gap, or unclear based on what was submitted. For any gaps, add 1-2 clarifying questions indented beneath it.]
+[For each of the 4 items, start the line with ✔ (satisfied), ✗ (gap), or ? (uncertain), followed by the checklist item text. For any ✗ or ? items, add 1-2 clarifying questions on indented lines beneath. Example:
+✔ Team can explain the item in their own words
+✗ Major acceptance criteria have been identified
+    What specific acceptance criteria should be defined?
+? Item is small enough to complete within a sprint
+    Has the team estimated the effort involved?]
 
 ### 2. Acceptance Boundaries
 [Same format as above]
@@ -534,6 +587,17 @@ def _status_badge(status: str) -> str:
     color  = colors.get(status, "#7f8c8d")
     return (f'<span style="background:{color};color:white;padding:1px 8px;'
             f'border-radius:10px;font-size:0.78em;font-weight:600">{label}</span>')
+
+
+def _gaps_badge_html(count: int, kind: str = "gap") -> str:
+    if count == 0:
+        color, bg = "#2e7d32", "#e8f5e9"
+    elif kind == "gap":
+        color, bg = "#c62828", "#fce4ec"
+    else:
+        color, bg = "#e65100", "#fff8e1"
+    return (f'<span style="display:inline-block;background:{bg};color:{color};'
+            f'border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700">{count}</span>')
 
 
 def _parse_assessment(text: str) -> dict:
@@ -778,6 +842,22 @@ def _adf_to_text(node, depth: int = 0) -> str:
     return "\n".join(p for p in parts if p.strip())
 
 
+def _count_checklist_gaps(gemini_output: str) -> tuple[int, int]:
+    """Return (gap_count, uncertain_count) by scanning ✗ and ? lines in the checklist."""
+    if not gemini_output:
+        return 0, 0
+    sections  = _parse_assessment(gemini_output)
+    checklist = sections.get("checklist", "")
+    gaps = uncertain = 0
+    for line in checklist.split("\n"):
+        s = line.strip()
+        if s.startswith("✗"):
+            gaps += 1
+        elif s.startswith("?"):
+            uncertain += 1
+    return gaps, uncertain
+
+
 def _split_checklist_groups(checklist_text: str) -> list:
     """Split checklist markdown into individual group strings by ### headings."""
     groups  = []
@@ -802,6 +882,40 @@ def _format_assessed_date(iso_str: str) -> str:
 
 
 # ── Dialogs ────────────────────────────────────────────────────────────────────
+@st.dialog("Rename Team")
+def _dialog_rename_team(team: dict):
+    new_name = st.text_input("New name", value=team["name"])
+    c1, c2 = st.columns(2)
+    if c1.button("Save", use_container_width=True):
+        if new_name.strip():
+            update_team(team["id"], new_name.strip())
+            if st.session_state.get("current_team_id") == team["id"]:
+                st.session_state["current_team_name"] = new_name.strip()
+            st.session_state["team_renamed_success"] = True
+            st.rerun()
+        else:
+            st.warning("Name cannot be empty.")
+    if c2.button("Cancel", use_container_width=True):
+        st.rerun()
+
+
+@st.dialog("Rename Session")
+def _dialog_rename_session(session: dict):
+    new_name = st.text_input("New name", value=session["name"])
+    c1, c2 = st.columns(2)
+    if c1.button("Save", use_container_width=True):
+        if new_name.strip():
+            update_refinement_session(session["id"], new_name.strip())
+            if st.session_state.get("current_session_id") == session["id"]:
+                st.session_state["current_session_name"] = new_name.strip()
+            st.session_state["session_renamed"] = True
+            st.rerun()
+        else:
+            st.warning("Name cannot be empty.")
+    if c2.button("Cancel", use_container_width=True):
+        st.rerun()
+
+
 @st.dialog("Delete Team")
 def _dialog_delete_team(team: dict):
     st.write(f"Delete **{team['name']}**? This will permanently remove the team and all its data.")
@@ -923,7 +1037,7 @@ def page_teams():
     if st.session_state.pop("team_renamed_success", None):
         st.success("Team renamed.")
 
-    teams = get_teams()
+    teams = get_teams_with_counts()
 
     with st.expander("How to use this page"):
         st.markdown("""
@@ -951,43 +1065,27 @@ def page_teams():
 
     st.divider()
 
-    for team in teams:
-        col_name, col_open, col_rename, col_delete = st.columns([5, 2, 2, 2])
-        col_name.write(f"**{team['name']}**")
-
-        if col_open.button("Open", key=f"open_{team['id']}"):
-            st.session_state["current_team_id"]   = team["id"]
-            st.session_state["current_team_name"] = team["name"]
-            st.session_state["sidebar_team_sel"]  = team["id"]
-            st.session_state["page"]              = "sessions"
-            st.rerun()
-
-        if col_rename.button("Rename", key=f"rename_{team['id']}"):
-            st.session_state[f"renaming_{team['id']}"] = True
-            st.rerun()
-
-        if col_delete.button("Delete", key=f"delete_{team['id']}"):
-            _dialog_delete_team(team)
-
-        if st.session_state.get(f"renaming_{team['id']}"):
-            with st.form(f"rename_form_{team['id']}"):
-                new_name = st.text_input("New name", value=team["name"])
-                c1, c2   = st.columns(2)
-                save     = c1.form_submit_button("Save")
-                cancel   = c2.form_submit_button("Cancel")
-            if save:
-                if new_name.strip():
-                    update_team(team["id"], new_name.strip())
-                    if st.session_state.get("current_team_id") == team["id"]:
-                        st.session_state["current_team_name"] = new_name.strip()
-                    st.session_state.pop(f"renaming_{team['id']}", None)
-                    st.session_state["team_renamed_success"] = True
+    cols = st.columns(3)
+    for i, team in enumerate(teams):
+        count = team.get("session_count", 0)
+        with cols[i % 3]:
+            with st.container(border=True):
+                st.markdown(f"**{team['name']}**")
+                st.caption(f"{count} session{'s' if count != 1 else ''}")
+                b1, b2, b3 = st.columns([3, 2, 2])
+                if b1.button("Open", key=f"open_{team['id']}",
+                             use_container_width=True, type="primary"):
+                    st.session_state["current_team_id"]   = team["id"]
+                    st.session_state["current_team_name"] = team["name"]
+                    st.session_state["sidebar_team_sel"]  = team["id"]
+                    st.session_state["page"]              = "sessions"
                     st.rerun()
-                else:
-                    st.warning("Name cannot be empty.")
-            if cancel:
-                st.session_state.pop(f"renaming_{team['id']}", None)
-                st.rerun()
+                if b2.button("Rename", key=f"rename_{team['id']}",
+                             use_container_width=True):
+                    _dialog_rename_team(team)
+                if b3.button("Delete", key=f"delete_{team['id']}",
+                             use_container_width=True):
+                    _dialog_delete_team(team)
 
 
 def page_sessions():
@@ -1002,7 +1100,7 @@ def page_sessions():
         st.success("Session renamed.")
 
     team_id  = st.session_state["current_team_id"]
-    sessions = get_refinement_sessions(team_id)
+    sessions = get_refinement_sessions_with_counts(team_id)
 
     today        = date_type.today()
     default_name = f"Session — {today.strftime('%b')} {today.day} {today.year}"
@@ -1033,15 +1131,28 @@ def page_sessions():
 
     st.divider()
 
-    for session in sessions:
-        col_name, col_open, col_rename, col_delete = st.columns([5, 2, 2, 2])
-        status = session.get("status", "preparing")
-        col_name.markdown(
-            f"**{session['name']}** &nbsp; {_status_badge(status)}",
-            unsafe_allow_html=True,
-        )
+    # ── Table header ──────────────────────────────────────────────────────────
+    h1, h2, h3, h4, h5, h6, h7 = st.columns([5, 2, 2, 2, 1, 1, 1])
+    h1.markdown("**Session**")
+    h2.markdown("**Status**")
+    h3.markdown("**Items**")
+    h4.markdown("**Created**")
+    st.markdown("---")
 
-        if col_open.button("Open", key=f"open_sess_{session['id']}"):
+    for session in sessions:
+        status      = session.get("status", "preparing")
+        total       = session.get("item_total",  0)
+        tagged      = session.get("item_tagged", 0)
+        created_str = _format_assessed_date(session.get("created_at", ""))
+
+        c1, c2, c3, c4, c5, c6, c7 = st.columns([5, 2, 2, 2, 1, 1, 1])
+        c1.markdown(f"**{session['name']}**")
+        c2.markdown(_status_badge(status), unsafe_allow_html=True)
+        c3.write(f"{tagged}/{total}")
+        c4.write(created_str)
+
+        if c5.button("Open", key=f"open_sess_{session['id']}",
+                     use_container_width=True, type="primary"):
             st.session_state["current_session_id"]   = session["id"]
             st.session_state["current_session_name"] = session["name"]
             st.session_state["run_item_index"]        = 0
@@ -1053,32 +1164,13 @@ def page_sessions():
                 st.session_state["page"] = "run_session"
             st.rerun()
 
-        if col_rename.button("Rename", key=f"rename_sess_{session['id']}"):
-            st.session_state[f"renaming_sess_{session['id']}"] = True
-            st.rerun()
+        if c6.button("Rename", key=f"rename_sess_{session['id']}",
+                     use_container_width=True):
+            _dialog_rename_session(session)
 
-        if col_delete.button("Delete", key=f"delete_sess_{session['id']}"):
+        if c7.button("Delete", key=f"delete_sess_{session['id']}",
+                     use_container_width=True):
             _dialog_delete_session(session)
-
-        if st.session_state.get(f"renaming_sess_{session['id']}"):
-            with st.form(f"rename_sess_form_{session['id']}"):
-                new_name = st.text_input("New name", value=session["name"])
-                c1, c2   = st.columns(2)
-                save     = c1.form_submit_button("Save")
-                cancel   = c2.form_submit_button("Cancel")
-            if save:
-                if new_name.strip():
-                    update_refinement_session(session["id"], new_name.strip())
-                    if st.session_state.get("current_session_id") == session["id"]:
-                        st.session_state["current_session_name"] = new_name.strip()
-                    st.session_state.pop(f"renaming_sess_{session['id']}", None)
-                    st.session_state["session_renamed"] = True
-                    st.rerun()
-                else:
-                    st.warning("Name cannot be empty.")
-            if cancel:
-                st.session_state.pop(f"renaming_sess_{session['id']}", None)
-                st.rerun()
 
 
 def page_prepare():
@@ -1324,27 +1416,31 @@ def page_prepare():
     st.subheader(f"Assessed Items ({len(items)})")
 
     # Column header row
-    h1, h2, h3, h4, h5 = st.columns([5, 2, 2, 2, 2])
+    h1, h2, h3, h4, h5, h6, h7 = st.columns([5, 2, 2, 1, 1, 2, 2])
     h1.markdown("**Item**")
     h2.markdown("**Clarity**")
     h3.markdown("**Refinement**")
-    h4.markdown("**Assessed**")
-    h5.markdown("")
+    h4.markdown("**Gaps**")
+    h5.markdown("**Uncertain**")
+    h6.markdown("**Assessed**")
+    h7.markdown("")
     st.markdown("---")
 
     for item in items:
         clarity_full  = item.get("clarity_gradient", "")
         zone          = item.get("threshold_zone", "")
-        # "High Clarity" → "High", "Moderate Clarity" → "Moderate", etc.
         clarity_short = clarity_full.replace(" Clarity", "")
         assessed_str  = _format_assessed_date(item.get("created_at", ""))
+        gaps, uncertain = _count_checklist_gaps(item.get("gemini_output", ""))
 
-        c1, c2, c3, c4, c5 = st.columns([5, 2, 2, 2, 2])
+        c1, c2, c3, c4, c5, c6, c7 = st.columns([5, 2, 2, 1, 1, 2, 2])
         c1.write(f"**{item['title']}**")
         c2.markdown(_clarity_badge(clarity_short), unsafe_allow_html=True)
         c3.markdown(_zone_badge(zone), unsafe_allow_html=True)
-        c4.write(assessed_str)
-        if c5.button("Delete", key=f"del_{item['id']}"):
+        c4.markdown(_gaps_badge_html(gaps, "gap"), unsafe_allow_html=True)
+        c5.markdown(_gaps_badge_html(uncertain, "uncertain"), unsafe_allow_html=True)
+        c6.write(assessed_str)
+        if c7.button("Delete", key=f"del_{item['id']}"):
             _dialog_delete_item(item)
 
         with st.expander("View full assessment"):
