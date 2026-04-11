@@ -1095,8 +1095,8 @@ def page_teams():
         unsafe_allow_html=True,
     )
 
-    # ── Add Team form ─────────────────────────────────────────────────────────
-    if st.session_state.get("show_add_team") or not teams:
+    # ── Add Team form — Streamlit form only for new users with no teams ───────
+    if not teams:
         with st.container(border=True):
             with st.form("add_team"):
                 name = st.text_input("Team Name", placeholder="e.g. Platform Engineering")
@@ -1109,23 +1109,12 @@ def page_teams():
                     create_team(name.strip())
                     st.session_state["team_created_success"] = True
                     st.session_state["team_created_name"]    = f"Team '{name.strip()}' created."
-                    st.session_state.pop("show_add_team", None)
                     st.rerun()
                 else:
                     st.warning("Please enter a team name.")
             if cancelled:
-                st.session_state.pop("show_add_team", None)
                 st.rerun()
-
-    if not teams:
-        st.markdown(
-            '<p style="color:#aaa;margin-top:8px">No teams yet. '
-            'Add your first team above.</p>',
-            unsafe_allow_html=True,
-        )
         return
-
-    st.write("")
 
     # ── Team card grid — single CSS grid block for equal-height cards ────────
     grid_html = (
@@ -1160,14 +1149,42 @@ def page_teams():
             f'</div>'
             f'</div>'
         )
-    # Dashed "Add New Team" card — stretches to match tallest card in its row
-    grid_html += (
-        f'<a href="?{q}_team_action=add_team" target="_self"'
-        f' style="display:flex;align-items:center;justify-content:center;'
-        f'background:#f8f9fb;border:2px dashed #d0d4db;border-radius:10px;'
-        f'text-decoration:none;color:#1565C0;font-size:14px;font-weight:600">'
-        f'+ Add New Team</a>'
-    )
+    # Last grid slot: inline form card or dashed card
+    if st.session_state.get("show_add_team"):
+        grid_html += (
+            f'<div style="background:#fff;border:1px solid #e0e3e8;border-radius:10px;'
+            f'box-shadow:0 1px 4px rgba(0,0,0,0.07);padding:20px;'
+            f'display:flex;flex-direction:column;justify-content:center">'
+            f'<div style="font-size:13px;font-weight:600;color:#1e2a3a;margin-bottom:12px">'
+            f'New Team</div>'
+            f'<form method="get" action="" style="margin:0;padding:0">'
+            f'<input type="hidden" name="sid" value="{sid}">'
+            f'<input type="hidden" name="_team_action" value="submit_add_team">'
+            f'<input type="text" name="team_name" required maxlength="80"'
+            f' placeholder="e.g. Platform Engineering" autofocus'
+            f' style="width:100%;padding:8px 10px;border:1px solid #d0d4db;'
+            f'border-radius:6px;font-size:13px;color:#1e2a3a;'
+            f'box-sizing:border-box;margin-bottom:10px;outline:none;'
+            f'font-family:inherit">'
+            f'<button type="submit"'
+            f' style="display:block;width:100%;background:#1565C0;color:#fff;'
+            f'border:none;padding:9px 0;border-radius:6px;font-size:13px;'
+            f'font-weight:600;cursor:pointer;margin-bottom:8px;font-family:inherit">'
+            f'Add Team</button>'
+            f'<a href="?{q}_team_action=cancel_add_team" target="_self"'
+            f' style="display:block;text-align:center;color:#888;'
+            f'font-size:12px;text-decoration:none">Cancel</a>'
+            f'</form>'
+            f'</div>'
+        )
+    else:
+        grid_html += (
+            f'<a href="?{q}_team_action=add_team" target="_self"'
+            f' style="display:flex;align-items:center;justify-content:center;'
+            f'background:#f8f9fb;border:2px dashed #d0d4db;border-radius:10px;'
+            f'text-decoration:none;color:#1565C0;font-size:14px;font-weight:600">'
+            f'+ Add New Team</a>'
+        )
     grid_html += '</div>'
     st.markdown(grid_html, unsafe_allow_html=True)
 
@@ -1801,16 +1818,26 @@ def show_topnav():
     sid       = st.session_state.get("session_id", "")
 
     # ── Handle team action params (card links → dialogs / forms) ────────────
-    team_action = st.query_params.get("_team_action", "")
-    tid         = st.query_params.get("tid", "")
-    if team_action in ("add_team", "rename_team", "delete_team"):
-        for k in ("_team_action", "tid"):
+    team_action   = st.query_params.get("_team_action", "")
+    tid           = st.query_params.get("tid", "")
+    team_name_val = st.query_params.get("team_name", "").strip()
+    if team_action in ("add_team", "submit_add_team", "cancel_add_team",
+                       "rename_team", "delete_team"):
+        for k in ("_team_action", "tid", "team_name"):
             try:
                 del st.query_params[k]
             except Exception:
                 pass
         if team_action == "add_team":
             st.session_state["show_add_team"] = True
+        elif team_action == "submit_add_team":
+            if team_name_val:
+                create_team(team_name_val)
+                st.session_state["team_created_success"] = True
+                st.session_state["team_created_name"]    = f"Team '{team_name_val}' created."
+            st.session_state.pop("show_add_team", None)
+        elif team_action == "cancel_add_team":
+            st.session_state.pop("show_add_team", None)
         elif team_action == "rename_team":
             st.session_state["pending_team_rename_id"] = tid
         elif team_action == "delete_team":
