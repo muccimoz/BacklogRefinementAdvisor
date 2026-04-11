@@ -594,17 +594,25 @@ THRESHOLD_ZONE: [Too Vague / Ideal / Over-Refined]
 
 # ── Display helpers ───────────────────────────────────────────────────────────
 def _clarity_badge(clarity: str) -> str:
-    colors = {"High": "#27ae60", "Moderate": "#e67e22", "Low": "#e74c3c"}
-    color  = colors.get(clarity, "#7f8c8d")
-    return (f'<span style="background:{color};color:white;padding:2px 10px;'
-            f'border-radius:10px;font-size:0.82em;font-weight:600">{clarity}</span>')
+    styles = {
+        "High":     "background:#27ae6022;color:#27ae60;border:1px solid #27ae6044",
+        "Moderate": "background:#e67e2222;color:#e67e22;border:1px solid #e67e2244",
+        "Low":      "background:#e74c3c22;color:#e74c3c;border:1px solid #e74c3c44",
+    }
+    style = styles.get(clarity, "background:#7f8c8d22;color:#7f8c8d;border:1px solid #7f8c8d44")
+    return (f'<span style="{style};display:inline-block;padding:2px 10px;'
+            f'border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap">{clarity}</span>')
 
 
 def _zone_badge(zone: str) -> str:
-    colors = {"Too Vague": "#e74c3c", "Ideal": "#27ae60", "Over-Refined": "#8e44ad"}
-    color  = colors.get(zone, "#7f8c8d")
-    return (f'<span style="background:{color};color:white;padding:2px 10px;'
-            f'border-radius:10px;font-size:0.82em;font-weight:600">{zone}</span>')
+    styles = {
+        "Too Vague":    "background:#e74c3c22;color:#e74c3c;border:1px solid #e74c3c44",
+        "Ideal":        "background:#27ae6022;color:#27ae60;border:1px solid #27ae6044",
+        "Over-Refined": "background:#8e44ad22;color:#8e44ad;border:1px solid #8e44ad44",
+    }
+    style = styles.get(zone, "background:#7f8c8d22;color:#7f8c8d;border:1px solid #7f8c8d44")
+    return (f'<span style="{style};display:inline-block;padding:2px 10px;'
+            f'border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap">{zone}</span>')
 
 
 def _status_badge(status: str) -> str:
@@ -1343,29 +1351,39 @@ def page_prepare():
         st.error(f"Assessment failed: {err}")
 
     # ── Header row ────────────────────────────────────────────────────────────
+    sid_param      = st.session_state.get("session_id", "")
+    q              = f"sid={sid_param}&" if sid_param else ""
+    start_disabled = len(items) == 0
+    start_href     = f"?{q}_sess_action=start_session&sess_id={_html.escape(str(session_id))}"
+
     col_hdr, col_start = st.columns([7, 2])
     col_hdr.markdown(
-        f'<h2 style="margin:0 0 6px 0;color:#1e2a3a">{_html.escape(session_name)}</h2>'
-        f'<div style="display:flex;align-items:center;gap:10px">'
-        f'<span style="font-size:13px;color:#888">{_html.escape(team_name)}</span>'
-        f'{_status_badge("preparing")}'
-        f'</div>',
+        f'<h1 style="margin:0 0 4px 0;color:#1e2a3a;font-size:26px;font-weight:700">'
+        f'{_html.escape(session_name)}</h1>'
+        f'<p style="margin:0 0 20px 0;color:#888;font-size:13px">'
+        f'Team: {_html.escape(team_name)}&nbsp;|&nbsp;Status: Preparing</p>',
         unsafe_allow_html=True,
     )
-    with col_start:
-        st.write("")
-        start_disabled = len(items) == 0
-        if st.button("Start Session →", disabled=start_disabled,
-                     use_container_width=True, type="primary",
-                     key="btn_start_session"):
-            update_session_status(session_id, "in_progress")
-            st.session_state["run_item_index"] = 0
-            st.session_state["page"]           = "run_session"
-            st.rerun()
-        if start_disabled:
-            st.caption("Requires at least one assessed item.")
-
-    st.divider()
+    if start_disabled:
+        col_start.markdown(
+            '<div style="text-align:right">'
+            '<span style="display:inline-block;background:#2e7d32;color:#fff;opacity:0.5;'
+            'font-size:14px;font-weight:600;padding:10px 22px;border-radius:6px;'
+            'white-space:nowrap;cursor:not-allowed">Start Session →</span>'
+            '<div style="font-size:12px;color:#aaa;margin-top:6px">'
+            'Requires at least one assessed item.</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        col_start.markdown(
+            f'<div style="text-align:right">'
+            f'<a href="{start_href}" target="_self" style="display:inline-block;'
+            f'background:#2e7d32;color:#fff;text-decoration:none;font-size:14px;'
+            f'font-weight:600;padding:10px 22px;border-radius:6px;white-space:nowrap">'
+            f'Start Session →</a></div>',
+            unsafe_allow_html=True,
+        )
 
     # ── Apply pending select-all flags before any widgets render ─────────────
     if st.session_state.pop("jira_select_all_flag", False):
@@ -1379,7 +1397,7 @@ def page_prepare():
     show_add  = st.session_state.get("show_add_item",  False)
     show_jira = st.session_state.get("show_jira_panel", False)
 
-    tb_lbl, _, tb_jira, tb_add = st.columns([4, 2, 2, 2])
+    tb_lbl, _, tb_add, tb_jira = st.columns([4, 2, 2, 2])
     tb_lbl.markdown(
         f'<div style="font-size:12px;font-weight:700;text-transform:uppercase;'
         f'letter-spacing:0.5px;color:#999;padding-top:8px">'
@@ -1607,12 +1625,6 @@ def page_prepare():
         if c7.button("Delete", key=f"del_{item['id']}"):
             _dialog_delete_item(item)
 
-        with st.expander("View full assessment"):
-            if item.get("gemini_output"):
-                st.markdown(item["gemini_output"])
-            st.markdown("---")
-            if st.button("Delete this item", key=f"del_full_{item['id']}"):
-                _dialog_delete_item(item)
 
 
 def page_run_session():
@@ -1877,7 +1889,7 @@ def show_topnav():
     sess_action  = st.query_params.get("_sess_action", "")
     sess_id_val  = st.query_params.get("sess_id", "")
     sess_status_val = st.query_params.get("sess_status", "")
-    if sess_action in ("open_session", "rename_session", "delete_session"):
+    if sess_action in ("open_session", "rename_session", "delete_session", "start_session"):
         for k in ("_sess_action", "sess_id", "sess_status"):
             try:
                 del st.query_params[k]
@@ -1901,6 +1913,10 @@ def show_topnav():
         elif sess_action == "delete_session":
             st.session_state["pending_session_delete_id"] = sess_id_val
             st.session_state["page"] = "sessions"
+        elif sess_action == "start_session" and sess_id_val:
+            update_session_status(sess_id_val, "in_progress")
+            st.session_state["run_item_index"] = 0
+            st.session_state["page"] = "run_session"
         st.rerun()
         return
 
