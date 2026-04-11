@@ -45,6 +45,15 @@ button[data-testid="stBaseButton-secondary"] {
 button[data-testid="stBaseButton-secondary"]:hover {
     background-color: #f8f9fb !important;
 }
+button[data-testid="stBaseButton-primaryFormSubmit"] {
+    background-color: #1565C0 !important;
+    border-color:     #1565C0 !important;
+    color: #fff !important;
+}
+button[data-testid="stBaseButton-primaryFormSubmit"]:hover {
+    background-color: #1251a3 !important;
+    border-color:     #1251a3 !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1078,19 +1087,13 @@ def page_teams():
             _dialog_delete_team(team_obj)
 
     # ── Page header ──────────────────────────────────────────────────────────
-    hcol, bcol = st.columns([7, 2])
-    hcol.markdown(
+    st.markdown(
         '<h1 style="margin:0 0 4px 0;color:#1e2a3a;font-size:26px;font-weight:700">'
         'Your Teams</h1>'
-        '<p style="margin:0;color:#888;font-size:13px">'
+        '<p style="margin:0 0 20px 0;color:#888;font-size:13px">'
         'Select a team to manage its refinement sessions</p>',
         unsafe_allow_html=True,
     )
-    bcol.write("")
-    if bcol.button("+ Add New Team", use_container_width=True, type="primary",
-                   key="btn_show_add_team"):
-        st.session_state["show_add_team"] = not st.session_state.get("show_add_team", False)
-        st.rerun()
 
     # ── Add Team form ─────────────────────────────────────────────────────────
     if st.session_state.get("show_add_team") or not teams:
@@ -1124,56 +1127,49 @@ def page_teams():
 
     st.write("")
 
-    # ── Team card grid (pure HTML for reliable styling) ───────────────────────
-    cols = st.columns(3)
-    for i, team in enumerate(teams):
+    # ── Team card grid — single CSS grid block for equal-height cards ────────
+    grid_html = (
+        '<div style="display:grid;grid-template-columns:repeat(3,1fr);'
+        'gap:16px;align-items:stretch">'
+    )
+    for team in teams:
         count       = team.get("session_count", 0)
         tid         = _html.escape(str(team["id"]))
         tname       = _html.escape(team["name"])
         count_label = f'{count} session{"s" if count != 1 else ""}'
-        with cols[i % 3]:
-            st.markdown(
-                f'<div style="background:#fff;border:1px solid #e0e3e8;border-radius:10px;'
-                f'box-shadow:0 1px 4px rgba(0,0,0,0.07);padding:20px">'
-                f'<div style="font-size:16px;font-weight:700;color:#1e2a3a;margin-bottom:4px">'
-                f'{tname}</div>'
-                f'<div style="font-size:12px;color:#aaa;margin-bottom:16px">{count_label}</div>'
-                f'<a href="?{q}_team={tid}" target="_self"'
-                f' style="display:block;text-align:center;background:#1565C0;color:#fff;'
-                f'text-decoration:none;padding:9px 0;border-radius:6px;'
-                f'font-size:13px;font-weight:600;margin-bottom:10px">Open</a>'
-                f'<div style="display:flex;gap:8px">'
-                f'<a href="?{q}_team_action=rename_team&tid={tid}" target="_self"'
-                f' style="flex:1;text-align:center;background:#fff;color:#1e2a3a;'
-                f'text-decoration:none;padding:8px 0;border-radius:6px;'
-                f'font-size:13px;font-weight:600;border:1px solid #d0d4db">Rename</a>'
-                f'<a href="?{q}_team_action=delete_team&tid={tid}" target="_self"'
-                f' style="flex:1;text-align:center;background:#fff;color:#c62828;'
-                f'text-decoration:none;padding:8px 0;border-radius:6px;'
-                f'font-size:13px;font-weight:600;border:1px solid #ef9a9a">Delete</a>'
-                f'</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-
-    # ── Dashed "Add New Team" card in next grid slot ──────────────────────────
-    next_idx = len(teams) % 3
-    if next_idx == 0:
-        new_cols   = st.columns(3)
-        target_col = new_cols[0]
-    else:
-        target_col = cols[next_idx]
-
-    with target_col:
-        st.markdown(
-            f'<a href="?{q}_team_action=add_team" target="_self"'
-            f' style="display:flex;align-items:center;justify-content:center;'
-            f'background:#f8f9fb;border:2px dashed #d0d4db;border-radius:10px;'
-            f'padding:20px;min-height:110px;text-decoration:none;'
-            f'color:#1565C0;font-size:14px;font-weight:600;'
-            f'width:100%;box-sizing:border-box">+ Add New Team</a>',
-            unsafe_allow_html=True,
+        grid_html += (
+            f'<div style="background:#fff;border:1px solid #e0e3e8;border-radius:10px;'
+            f'box-shadow:0 1px 4px rgba(0,0,0,0.07);padding:20px;display:flex;'
+            f'flex-direction:column">'
+            f'<div style="font-size:16px;font-weight:700;color:#1e2a3a;margin-bottom:4px">'
+            f'{tname}</div>'
+            f'<div style="font-size:12px;color:#aaa;margin-bottom:16px">{count_label}</div>'
+            f'<a href="?{q}_team={tid}" target="_self"'
+            f' style="display:block;text-align:center;background:#1565C0;color:#fff;'
+            f'text-decoration:none;padding:9px 0;border-radius:6px;'
+            f'font-size:13px;font-weight:600;margin-bottom:10px">Open</a>'
+            f'<div style="display:flex;gap:8px">'
+            f'<a href="?{q}_team_action=rename_team&tid={tid}" target="_self"'
+            f' style="flex:1;text-align:center;background:#fff;color:#1e2a3a;'
+            f'text-decoration:none;padding:8px 0;border-radius:6px;'
+            f'font-size:13px;font-weight:600;border:1px solid #d0d4db">Rename</a>'
+            f'<a href="?{q}_team_action=delete_team&tid={tid}" target="_self"'
+            f' style="flex:1;text-align:center;background:#fff;color:#c62828;'
+            f'text-decoration:none;padding:8px 0;border-radius:6px;'
+            f'font-size:13px;font-weight:600;border:1px solid #ef9a9a">Delete</a>'
+            f'</div>'
+            f'</div>'
         )
+    # Dashed "Add New Team" card — stretches to match tallest card in its row
+    grid_html += (
+        f'<a href="?{q}_team_action=add_team" target="_self"'
+        f' style="display:flex;align-items:center;justify-content:center;'
+        f'background:#f8f9fb;border:2px dashed #d0d4db;border-radius:10px;'
+        f'text-decoration:none;color:#1565C0;font-size:14px;font-weight:600">'
+        f'+ Add New Team</a>'
+    )
+    grid_html += '</div>'
+    st.markdown(grid_html, unsafe_allow_html=True)
 
 
 def page_sessions():
