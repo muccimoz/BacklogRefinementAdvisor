@@ -25,6 +25,7 @@ header     { display: none !important; }
 [data-testid="stToolbar"]        { display: none !important; }
 [data-testid="stDecoration"]     { display: none !important; }
 [data-testid="stStatusWidget"]   { display: none !important; }
+.stApp { background-color: #f4f6f9 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -748,13 +749,21 @@ def _render_summary_table_html(items: list) -> str:
         o_badge = (badge(outcome, outcome_colors.get(outcome, "#7f8c8d"))
                    if outcome else badge("Pending", "#bdc3c7"))
 
+        notes         = item.get("outcome_notes", "") or ""
+        notes_cell    = (
+            f'<span style="font-size:12px;color:#777;font-style:italic">'
+            f'{_html.escape(notes)}</span>'
+            if notes else '<span style="color:#ddd">—</span>'
+        )
+
         rows += (
             f'<tr>'
             f'<td style="padding:11px 14px;border-bottom:1px solid #eef0f3;font-size:13px">'
-            f'<strong>{item["title"]}</strong></td>'
+            f'<strong>{_html.escape(item["title"])}</strong></td>'
             f'<td style="padding:11px 14px;border-bottom:1px solid #eef0f3">{c_badge}</td>'
             f'<td style="padding:11px 14px;border-bottom:1px solid #eef0f3">{z_badge}</td>'
             f'<td style="padding:11px 14px;border-bottom:1px solid #eef0f3">{o_badge}</td>'
+            f'<td style="padding:11px 14px;border-bottom:1px solid #eef0f3">{notes_cell}</td>'
             f'<td style="padding:11px 14px;border-bottom:1px solid #eef0f3;'
             f'font-size:12px;color:#888">{assessed_str}</td>'
             f'</tr>'
@@ -766,10 +775,11 @@ def _render_summary_table_html(items: list) -> str:
         f'<table style="width:100%;border-collapse:collapse;background:#fff;'
         f'border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.1)">'
         f'<thead><tr>'
-        f'<th style="{th};width:35%">Backlog Item</th>'
+        f'<th style="{th};width:28%">Backlog Item</th>'
         f'<th style="{th}">Clarity</th>'
         f'<th style="{th}">Refinement</th>'
         f'<th style="{th}">Outcome</th>'
+        f'<th style="{th}">Notes</th>'
         f'<th style="{th}">Assessed</th>'
         f'</tr></thead>'
         f'<tbody>{rows}</tbody></table>'
@@ -1026,8 +1036,6 @@ def page_login():
 
 
 def page_teams():
-    st.title("Your Teams")
-
     if st.session_state.pop("team_created_success", None):
         st.success(st.session_state.pop("team_created_name", "Team created."))
     if st.session_state.pop("team_deleted_success", None):
@@ -1037,31 +1045,51 @@ def page_teams():
 
     teams = get_teams_with_counts()
 
-    with st.expander("How to use this page"):
-        st.markdown("""
-- Each team has its own refinement sessions and backlog assessments.
-- Click **Open** to view and manage refinement sessions for that team.
-- Use **Add New Team** to create a separate team for each group you want to track independently.
-- Use **Rename** to update a team's name, or **Delete** to permanently remove it and all its data.
-        """)
+    # ── Page header ──────────────────────────────────────────────────────────
+    hcol, bcol = st.columns([7, 2])
+    hcol.markdown(
+        '<h2 style="margin:0 0 4px 0;color:#1e2a3a">Your Teams</h2>'
+        '<p style="margin:0;color:#888;font-size:13px">'
+        'Select a team to manage its refinement sessions</p>',
+        unsafe_allow_html=True,
+    )
+    bcol.write("")
+    if bcol.button("+ Add New Team", use_container_width=True, type="primary",
+                   key="btn_show_add_team"):
+        st.session_state["show_add_team"] = not st.session_state.get("show_add_team", False)
+        st.rerun()
 
-    with st.expander("Add New Team", expanded=(len(teams) == 0)):
-        with st.form("add_team"):
-            name = st.text_input("Team Name")
-            if st.form_submit_button("Add Team"):
+    # ── Add Team form ─────────────────────────────────────────────────────────
+    if st.session_state.get("show_add_team") or not teams:
+        with st.container(border=True):
+            with st.form("add_team"):
+                name = st.text_input("Team Name", placeholder="e.g. Platform Engineering")
+                c1, c2 = st.columns([3, 1])
+                submitted = c1.form_submit_button("Add Team", type="primary",
+                                                  use_container_width=True)
+                cancelled = c2.form_submit_button("Cancel", use_container_width=True)
+            if submitted:
                 if name.strip():
                     create_team(name.strip())
                     st.session_state["team_created_success"] = True
                     st.session_state["team_created_name"]    = f"Team '{name.strip()}' created."
+                    st.session_state.pop("show_add_team", None)
                     st.rerun()
                 else:
                     st.warning("Please enter a team name.")
+            if cancelled:
+                st.session_state.pop("show_add_team", None)
+                st.rerun()
 
     if not teams:
-        st.info("No teams yet. Add one above to get started.")
+        st.markdown(
+            '<p style="color:#aaa;margin-top:8px">No teams yet. '
+            'Add your first team above.</p>',
+            unsafe_allow_html=True,
+        )
         return
 
-    st.divider()
+    st.write("")
 
     cols = st.columns(3)
     for i, team in enumerate(teams):
@@ -1071,10 +1099,9 @@ def page_teams():
                 st.markdown(f"**{team['name']}**")
                 st.caption(f"{count} session{'s' if count != 1 else ''}")
                 if st.button("Open", key=f"open_{team['id']}",
-                            use_container_width=True, type="primary"):
+                             use_container_width=True, type="primary"):
                     st.session_state["current_team_id"]   = team["id"]
                     st.session_state["current_team_name"] = team["name"]
-                    st.session_state["sidebar_team_sel"]  = team["id"]
                     st.session_state["page"]              = "sessions"
                     st.rerun()
                 b1, b2 = st.columns(2)
@@ -1088,7 +1115,6 @@ def page_teams():
 
 def page_sessions():
     team_name = st.session_state.get("current_team_name", "Team")
-    st.title(f"Refinement Sessions — {team_name}")
 
     if st.session_state.pop("session_created", None):
         st.success(st.session_state.pop("session_created_name", "Session created."))
@@ -1103,39 +1129,64 @@ def page_sessions():
     today        = date_type.today()
     default_name = f"Session — {today.strftime('%b')} {today.day} {today.year}"
 
-    with st.expander("How to use this page"):
-        st.markdown("""
-- Each refinement session represents one backlog refinement meeting.
-- Click **Open** to submit and review backlog items assessed within that session.
-- Use **Add New Session** to create a session for your next refinement meeting.
-- Use **Rename** to update a session name, or **Delete** to remove it and all its items.
-        """)
+    # ── Page header ──────────────────────────────────────────────────────────
+    n = len(sessions)
+    hcol, bcol = st.columns([7, 2])
+    hcol.markdown(
+        f'<h2 style="margin:0 0 4px 0;color:#1e2a3a">{_html.escape(team_name)}</h2>'
+        f'<p style="margin:0;color:#888;font-size:13px">Refinement sessions'
+        + (f'&nbsp;·&nbsp;{n} session{"s" if n != 1 else ""}' if sessions else '')
+        + '</p>',
+        unsafe_allow_html=True,
+    )
+    bcol.write("")
+    if bcol.button("+ New Session", use_container_width=True, type="primary",
+                   key="btn_show_add_sess"):
+        st.session_state["show_add_session"] = not st.session_state.get("show_add_session", False)
+        st.rerun()
 
-    with st.expander("Add New Session", expanded=(len(sessions) == 0)):
-        with st.form("add_session"):
-            name = st.text_input("Session Name", value=default_name)
-            if st.form_submit_button("Add Session"):
+    # ── Add Session form ──────────────────────────────────────────────────────
+    if st.session_state.get("show_add_session") or not sessions:
+        with st.container(border=True):
+            with st.form("add_session"):
+                name = st.text_input("Session Name", value=default_name)
+                c1, c2 = st.columns([3, 1])
+                submitted = c1.form_submit_button("Add Session", type="primary",
+                                                  use_container_width=True)
+                cancelled = c2.form_submit_button("Cancel", use_container_width=True)
+            if submitted:
                 if name.strip():
                     create_refinement_session(team_id, name.strip())
                     st.session_state["session_created"]      = True
                     st.session_state["session_created_name"] = f"Session '{name.strip()}' created."
+                    st.session_state.pop("show_add_session", None)
                     st.rerun()
                 else:
                     st.warning("Please enter a session name.")
+            if cancelled:
+                st.session_state.pop("show_add_session", None)
+                st.rerun()
 
     if not sessions:
-        st.info("No sessions yet. Add one above to get started.")
+        st.markdown(
+            '<p style="color:#aaa;margin-top:8px">No sessions yet. '
+            'Add your first session above.</p>',
+            unsafe_allow_html=True,
+        )
         return
 
-    st.divider()
+    st.write("")
 
     # ── Table header ──────────────────────────────────────────────────────────
-    h1, h2, h3, h4, h5, h6, h7 = st.columns([4, 2, 1, 2, 2, 2, 2])
-    h1.markdown("**Session**")
-    h2.markdown("**Status**")
-    h3.markdown("**Items**")
-    h4.markdown("**Created**")
-    st.markdown("---")
+    st.markdown("""
+<div style="background:#1e2a3a;color:#fff;padding:10px 12px;border-radius:8px 8px 0 0;
+            font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;
+            display:grid;grid-template-columns:4fr 2fr 1.2fr 2fr 2fr 2fr 2fr;gap:8px;
+            margin-bottom:0">
+  <div>Session</div><div>Status</div><div>Items</div><div>Created</div>
+  <div></div><div></div><div></div>
+</div>
+""", unsafe_allow_html=True)
 
     for session in sessions:
         status      = session.get("status", "preparing")
@@ -1143,7 +1194,7 @@ def page_sessions():
         tagged      = session.get("item_tagged", 0)
         created_str = _format_assessed_date(session.get("created_at", ""))
 
-        c1, c2, c3, c4, c5, c6, c7 = st.columns([4, 2, 1, 2, 2, 2, 2])
+        c1, c2, c3, c4, c5, c6, c7 = st.columns([4, 2, 1.2, 2, 2, 2, 2])
         c1.markdown(f"**{session['name']}**")
         c2.markdown(_status_badge(status), unsafe_allow_html=True)
         c3.write(f"{tagged}/{total}")
@@ -1189,15 +1240,19 @@ def page_prepare():
         st.error(f"Assessment failed: {err}")
 
     # ── Header row ────────────────────────────────────────────────────────────
-    col_hdr, col_start = st.columns([8, 2])
-    with col_hdr:
-        st.title(session_name)
-        st.caption(f"Team: {team_name}  |  Status: Preparing")
+    col_hdr, col_start = st.columns([7, 2])
+    col_hdr.markdown(
+        f'<h2 style="margin:0 0 6px 0;color:#1e2a3a">{_html.escape(session_name)}</h2>'
+        f'<div style="display:flex;align-items:center;gap:10px">'
+        f'<span style="font-size:13px;color:#888">{_html.escape(team_name)}</span>'
+        f'{_status_badge("preparing")}'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
     with col_start:
         st.write("")
-        st.write("")
         start_disabled = len(items) == 0
-        if st.button("Start Session", disabled=start_disabled,
+        if st.button("Start Session →", disabled=start_disabled,
                      use_container_width=True, type="primary",
                      key="btn_start_session"):
             update_session_status(session_id, "in_progress")
@@ -1221,15 +1276,22 @@ def page_prepare():
     show_add  = st.session_state.get("show_add_item",  False)
     show_jira = st.session_state.get("show_jira_panel", False)
 
-    tb1, tb2, _ = st.columns([2, 2, 6])
-    if tb1.button("+ Add Item", key="btn_toggle_add"):
+    tb_lbl, _, tb_jira, tb_add = st.columns([4, 2, 2, 2])
+    tb_lbl.markdown(
+        f'<div style="font-size:12px;font-weight:700;text-transform:uppercase;'
+        f'letter-spacing:0.5px;color:#999;padding-top:8px">'
+        f'Assessed Items&nbsp;·&nbsp;{len(items)} item{"s" if len(items) != 1 else ""}'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+    if tb_add.button("+ Add Item", key="btn_toggle_add", use_container_width=True):
         new_val = not show_add
         st.session_state["show_add_item"] = new_val
         if new_val:
             st.session_state["show_jira_panel"] = False
             st.session_state.pop("jira_issues", None)
         st.rerun()
-    if tb2.button("Import from Jira", key="btn_toggle_jira"):
+    if tb_jira.button("Import from Jira", key="btn_toggle_jira", use_container_width=True):
         new_val = not show_jira
         st.session_state["show_jira_panel"] = new_val
         if new_val:
@@ -1407,22 +1469,23 @@ def page_prepare():
 
     # ── Items table ───────────────────────────────────────────────────────────
     if not items:
-        st.info("No items yet. Click '+ Add Item' to add and assess your first backlog item.")
+        st.markdown(
+            '<p style="color:#aaa;margin-top:16px">No items yet. '
+            'Use "+ Add Item" or "Import from Jira" to add and assess backlog items.</p>',
+            unsafe_allow_html=True,
+        )
         return
 
-    st.divider()
-    st.subheader(f"Assessed Items ({len(items)})")
-
-    # Column header row
-    h1, h2, h3, h4, h5, h6, h7 = st.columns([5, 2, 2, 1, 2, 2, 2])
-    h1.markdown("**Item**")
-    h2.markdown("**Clarity**")
-    h3.markdown("**Refinement**")
-    h4.markdown("**Gaps**")
-    h5.markdown("**Uncertain**")
-    h6.markdown("**Assessed**")
-    h7.markdown("")
-    st.markdown("---")
+    st.write("")
+    st.markdown("""
+<div style="background:#1e2a3a;color:#fff;padding:10px 12px;border-radius:8px 8px 0 0;
+            font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;
+            display:grid;grid-template-columns:5fr 2fr 2fr 1fr 2fr 2fr 1.5fr;gap:8px;
+            margin-bottom:0">
+  <div>Backlog Item</div><div>Clarity</div><div>Refinement</div>
+  <div>Gaps</div><div>Uncertain</div><div>Assessed</div><div></div>
+</div>
+""", unsafe_allow_html=True)
 
     for item in items:
         clarity_full  = item.get("clarity_gradient", "")
@@ -1477,34 +1540,39 @@ def page_run_session():
     if st.session_state.pop("outcome_saved", None):
         st.success("Outcome saved.")
 
-    # ── Header ────────────────────────────────────────────────────────────────
-    col_hdr, col_summary = st.columns([8, 2])
-    with col_hdr:
-        st.title(session_name)
-        st.caption(f"Team: {team_name}  |  Item {idx + 1} of {total}  |  Status: {status_label}")
-    with col_summary:
-        st.write("")
-        st.write("")
-        if st.button("View Summary", use_container_width=True, key="btn_view_summary"):
-            st.session_state["page"] = "summary"
-            st.rerun()
-        if st.button("← Back to Prepare", use_container_width=True, key="btn_back_prepare"):
-            update_session_status(session_id, "preparing")
-            st.session_state["page"] = "prepare"
-            st.rerun()
+    # ── Dark topbar ───────────────────────────────────────────────────────────
+    sid = st.session_state.get("session_id", "")
+    q   = f"sid={sid}&" if sid else ""
 
-    # ── Progress dots ─────────────────────────────────────────────────────────
     outcome_color_map = {label: color for label, color in OUTCOME_OPTIONS}
-    dots = []
+    dots_html = ""
     for i, it in enumerate(all_items):
-        color  = outcome_color_map.get(it.get("outcome", ""), "#bdc3c7")
-        border = "3px solid #2c3e50" if i == idx else "3px solid transparent"
-        dots.append(
-            f'<span style="display:inline-block;width:14px;height:14px;border-radius:50%;'
-            f'background:{color};border:{border};margin:2px 3px;vertical-align:middle"></span>'
+        color  = outcome_color_map.get(it.get("outcome", ""), "#3d5166")
+        border = "3px solid #fff" if i == idx else "3px solid transparent"
+        dots_html += (
+            f'<span style="display:inline-block;width:12px;height:12px;border-radius:50%;'
+            f'background:{color};border:{border};margin:0 3px;vertical-align:middle"></span>'
         )
-    st.markdown(" ".join(dots), unsafe_allow_html=True)
-    st.divider()
+
+    st.markdown(f"""
+<div style="background:#1e2a3a;color:#fff;padding:14px 20px;border-radius:10px;
+            margin-bottom:16px;display:flex;align-items:center;
+            justify-content:space-between;box-shadow:0 2px 8px rgba(0,0,0,0.15)">
+  <div style="min-width:0;flex:1">
+    <div style="font-size:15px;font-weight:700;overflow:hidden;text-overflow:ellipsis;
+                white-space:nowrap">{_html.escape(session_name)}</div>
+    <div style="font-size:12px;color:#90CAF9;margin-top:2px">{_html.escape(team_name)}</div>
+  </div>
+  <div style="text-align:center;flex-shrink:0;padding:0 24px">
+    <div style="font-size:11px;color:#aaa;margin-bottom:6px">Item {idx + 1} of {total}</div>
+    <div>{dots_html}</div>
+  </div>
+  <a href="?{q}_nav=view_summary" target="_self"
+     style="background:#1565C0;color:#fff;text-decoration:none;font-size:12px;
+            font-weight:600;padding:7px 14px;border-radius:6px;
+            white-space:nowrap;flex-shrink:0">View Summary</a>
+</div>
+""", unsafe_allow_html=True)
 
     # ── Item title ────────────────────────────────────────────────────────────
     st.subheader(item["title"])
@@ -1532,21 +1600,20 @@ def page_run_session():
     if mistakes_html:
         st.markdown(mistakes_html, unsafe_allow_html=True)
 
-    # ── Full checklist (expandable, 2-column layout) ─────────────────────────
+    # ── Full checklist (always visible, 2-column layout) ─────────────────────
     if sections.get("checklist"):
         st.divider()
-        with st.expander("View Assessment Details"):
-            groups = _split_checklist_groups(sections["checklist"])
-            if len(groups) >= 3:
-                left_col, right_col = st.columns(2)
-                with left_col:
-                    for g in groups[:2]:
-                        st.markdown(g)
-                with right_col:
-                    for g in groups[2:]:
-                        st.markdown(g)
-            else:
-                st.markdown(sections["checklist"])
+        groups = _split_checklist_groups(sections["checklist"])
+        if len(groups) >= 2:
+            left_col, right_col = st.columns(2)
+            with left_col:
+                for g in groups[:2]:
+                    st.markdown(g)
+            with right_col:
+                for g in groups[2:]:
+                    st.markdown(g)
+        else:
+            st.markdown(sections["checklist"])
 
     st.divider()
 
@@ -1604,23 +1671,19 @@ def page_summary():
         update_session_status(session_id, "complete")
 
     # ── Header ────────────────────────────────────────────────────────────────
-    col_hdr, col_export = st.columns([8, 2])
-    with col_hdr:
-        st.title("Session Summary")
-        st.caption(f"{session_name}  |  Team: {team_name}  |  {len(items)} items  |  Status: Complete")
-    with col_export:
-        st.write("")
-        st.write("")
-        csv_data = _generate_summary_csv(items)
-        st.download_button(
-            "Export CSV",
-            data=csv_data,
-            file_name=f"{session_name} Summary.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )
+    n = len(items)
+    st.markdown(
+        f'<h2 style="margin:0 0 4px 0;color:#1e2a3a">Session Summary</h2>'
+        f'<p style="margin:0;color:#888;font-size:13px">'
+        f'{_html.escape(session_name)}&nbsp;·&nbsp;{_html.escape(team_name)}'
+        f'&nbsp;·&nbsp;{n} item{"s" if n != 1 else ""}'
+        f'&nbsp;·&nbsp;<span style="background:#e8f5e9;color:#2e7d32;padding:1px 8px;'
+        f'border-radius:10px;font-size:11px;font-weight:600;border:1px solid #a5d6a7">'
+        f'Complete</span></p>',
+        unsafe_allow_html=True,
+    )
 
-    st.divider()
+    st.write("")
 
     # ── Outcome count bar ─────────────────────────────────────────────────────
     st.markdown(_render_outcome_count_bar_html(items), unsafe_allow_html=True)
@@ -1632,10 +1695,15 @@ def page_summary():
 
     # ── Action buttons ────────────────────────────────────────────────────────
     st.write("")
+    csv_data = _generate_summary_csv(items)
     btn1, btn2, _ = st.columns([2, 2, 6])
-    if btn1.button("← Back to Session", use_container_width=True):
-        st.session_state["page"] = "run_session"
-        st.rerun()
+    btn1.download_button(
+        "Export CSV",
+        data=csv_data,
+        file_name=f"{session_name} Summary.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
     if btn2.button("Reopen Session", use_container_width=True):
         update_session_status(session_id, "in_progress")
         st.session_state["page"] = "run_session"
@@ -1707,6 +1775,10 @@ def show_topnav():
             return
         elif nav_dest == "sessions" and team_id:
             st.session_state["page"] = "sessions"
+            st.rerun()
+            return
+        elif nav_dest == "view_summary" and st.session_state.get("current_session_id"):
+            st.session_state["page"] = "summary"
             st.rerun()
             return
 
