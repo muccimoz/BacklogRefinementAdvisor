@@ -1072,18 +1072,18 @@ def page_teams():
             with st.container(border=True):
                 st.markdown(f"**{team['name']}**")
                 st.caption(f"{count} session{'s' if count != 1 else ''}")
-                b1, b2, b3 = st.columns([3, 2, 2])
-                if b1.button("Open", key=f"open_{team['id']}",
-                             use_container_width=True, type="primary"):
+                if st.button("Open", key=f"open_{team['id']}",
+                            use_container_width=True, type="primary"):
                     st.session_state["current_team_id"]   = team["id"]
                     st.session_state["current_team_name"] = team["name"]
                     st.session_state["sidebar_team_sel"]  = team["id"]
                     st.session_state["page"]              = "sessions"
                     st.rerun()
-                if b2.button("Rename", key=f"rename_{team['id']}",
+                b1, b2 = st.columns(2)
+                if b1.button("Rename", key=f"rename_{team['id']}",
                              use_container_width=True):
                     _dialog_rename_team(team)
-                if b3.button("Delete", key=f"delete_{team['id']}",
+                if b2.button("Delete", key=f"delete_{team['id']}",
                              use_container_width=True):
                     _dialog_delete_team(team)
 
@@ -1132,7 +1132,7 @@ def page_sessions():
     st.divider()
 
     # ── Table header ──────────────────────────────────────────────────────────
-    h1, h2, h3, h4, h5, h6, h7 = st.columns([5, 2, 2, 2, 1, 1, 1])
+    h1, h2, h3, h4, h5, h6, h7 = st.columns([4, 2, 1, 2, 2, 2, 2])
     h1.markdown("**Session**")
     h2.markdown("**Status**")
     h3.markdown("**Items**")
@@ -1145,7 +1145,7 @@ def page_sessions():
         tagged      = session.get("item_tagged", 0)
         created_str = _format_assessed_date(session.get("created_at", ""))
 
-        c1, c2, c3, c4, c5, c6, c7 = st.columns([5, 2, 2, 2, 1, 1, 1])
+        c1, c2, c3, c4, c5, c6, c7 = st.columns([4, 2, 1, 2, 2, 2, 2])
         c1.markdown(f"**{session['name']}**")
         c2.markdown(_status_badge(status), unsafe_allow_html=True)
         c3.write(f"{tagged}/{total}")
@@ -1416,7 +1416,7 @@ def page_prepare():
     st.subheader(f"Assessed Items ({len(items)})")
 
     # Column header row
-    h1, h2, h3, h4, h5, h6, h7 = st.columns([5, 2, 2, 1, 1, 2, 2])
+    h1, h2, h3, h4, h5, h6, h7 = st.columns([5, 2, 2, 1, 2, 2, 2])
     h1.markdown("**Item**")
     h2.markdown("**Clarity**")
     h3.markdown("**Refinement**")
@@ -1433,7 +1433,7 @@ def page_prepare():
         assessed_str  = _format_assessed_date(item.get("created_at", ""))
         gaps, uncertain = _count_checklist_gaps(item.get("gemini_output", ""))
 
-        c1, c2, c3, c4, c5, c6, c7 = st.columns([5, 2, 2, 1, 1, 2, 2])
+        c1, c2, c3, c4, c5, c6, c7 = st.columns([5, 2, 2, 1, 2, 2, 2])
         c1.write(f"**{item['title']}**")
         c2.markdown(_clarity_badge(clarity_short), unsafe_allow_html=True)
         c3.markdown(_zone_badge(zone), unsafe_allow_html=True)
