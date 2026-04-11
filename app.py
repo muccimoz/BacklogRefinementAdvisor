@@ -1043,12 +1043,30 @@ def page_teams():
     if st.session_state.pop("team_renamed_success", None):
         st.success("Team renamed.")
 
+    # ── Page-level styles ─────────────────────────────────────────────────────
+    st.markdown("""
+<style>
+[data-testid="stVerticalBlockBorderWrapper"] {
+    background: #fff !important;
+    border: 1px solid #e0e3e8 !important;
+    border-radius: 10px !important;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.07) !important;
+}
+[data-testid="stVerticalBlockBorderWrapper"] [data-testid="column"]:last-of-type
+    button[data-testid="stBaseButton-secondary"] {
+    color: #c62828 !important;
+    border-color: #ef9a9a !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
     teams = get_teams_with_counts()
 
     # ── Page header ──────────────────────────────────────────────────────────
     hcol, bcol = st.columns([7, 2])
     hcol.markdown(
-        '<h2 style="margin:0 0 4px 0;color:#1e2a3a">Your Teams</h2>'
+        '<h1 style="margin:0 0 4px 0;color:#1e2a3a;font-size:26px;font-weight:700">'
+        'Your Teams</h1>'
         '<p style="margin:0;color:#888;font-size:13px">'
         'Select a team to manage its refinement sessions</p>',
         unsafe_allow_html=True,
@@ -1096,8 +1114,13 @@ def page_teams():
         count = team.get("session_count", 0)
         with cols[i % 3]:
             with st.container(border=True):
-                st.markdown(f"**{team['name']}**")
-                st.caption(f"{count} session{'s' if count != 1 else ''}")
+                st.markdown(
+                    f'<div style="font-size:16px;font-weight:700;color:#1e2a3a;'
+                    f'margin-bottom:4px">{_html.escape(team["name"])}</div>'
+                    f'<div style="font-size:12px;color:#aaa;margin-bottom:8px">'
+                    f'{count} session{"s" if count != 1 else ""}</div>',
+                    unsafe_allow_html=True,
+                )
                 if st.button("Open", key=f"open_{team['id']}",
                              use_container_width=True, type="primary"):
                     st.session_state["current_team_id"]   = team["id"]
@@ -1111,6 +1134,27 @@ def page_teams():
                 if b2.button("Delete", key=f"delete_{team['id']}",
                              use_container_width=True):
                     _dialog_delete_team(team)
+
+    # ── Dashed "Add New Team" card in next grid slot ──────────────────────────
+    next_idx = len(teams) % 3
+    if next_idx == 0:
+        new_cols = st.columns(3)
+        target_col = new_cols[0]
+    else:
+        target_col = cols[next_idx]
+
+    sid = st.session_state.get("session_id", "")
+    q   = f"sid={sid}&" if sid else ""
+    with target_col:
+        st.markdown(
+            f'<a href="?{q}_team_action=add_team" target="_self"'
+            f' style="display:flex;align-items:center;justify-content:center;'
+            f'background:#f8f9fb;border:2px dashed #d0d4db;border-radius:10px;'
+            f'padding:20px;min-height:110px;text-decoration:none;'
+            f'color:#1565C0;font-size:14px;font-weight:600;'
+            f'width:100%;box-sizing:border-box">+ Add New Team</a>',
+            unsafe_allow_html=True,
+        )
 
 
 def page_sessions():
@@ -1740,6 +1784,18 @@ def show_topnav():
     team_id   = st.session_state.get("current_team_id", "")
     sess_name = st.session_state.get("current_session_name", "")
     sid       = st.session_state.get("session_id", "")
+
+    # ── Handle team action params (e.g. dashed card click) ───────────────────
+    team_action = st.query_params.get("_team_action", "")
+    if team_action == "add_team":
+        try:
+            del st.query_params["_team_action"]
+        except Exception:
+            pass
+        st.session_state["show_add_team"] = True
+        st.session_state["page"] = "teams"
+        st.rerun()
+        return
 
     # ── Handle nav-click redirects (query params set by HTML links) ───────────
     nav_dest  = st.query_params.get("_nav",  "")
