@@ -26,6 +26,25 @@ header     { display: none !important; }
 [data-testid="stDecoration"]     { display: none !important; }
 [data-testid="stStatusWidget"]   { display: none !important; }
 .stApp { background-color: #f4f6f9 !important; }
+
+/* ── Global button overrides ── */
+button[data-testid="stBaseButton-primary"] {
+    background-color: #1565C0 !important;
+    border-color:     #1565C0 !important;
+    color: #fff !important;
+}
+button[data-testid="stBaseButton-primary"]:hover {
+    background-color: #1251a3 !important;
+    border-color:     #1251a3 !important;
+}
+button[data-testid="stBaseButton-secondary"] {
+    background-color: #fff !important;
+    border-color:     #d0d4db !important;
+    color: #1e2a3a !important;
+}
+button[data-testid="stBaseButton-secondary"]:hover {
+    background-color: #f8f9fb !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
