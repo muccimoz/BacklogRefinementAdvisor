@@ -789,11 +789,11 @@ def _render_checklist_group_html(group_text: str) -> str:
 
 def _render_outcome_count_bar_html(items: list) -> str:
     outcome_config = [
-        ("Ready for Sprint",        "#27ae60", "#e8f8f0"),
-        ("Needs More Refinement",   "#2980b9", "#e8f4fd"),
-        ("Return to Product Owner", "#e67e22", "#fef3e8"),
-        ("Defer",                   "#7f8c8d", "#f2f3f4"),
-        ("Split Required",          "#8e44ad", "#f5eef8"),
+        ("Ready for Sprint",        "#27ae60"),
+        ("Needs More Refinement",   "#2980b9"),
+        ("Return to Product Owner", "#e67e22"),
+        ("Defer",                   "#7f8c8d"),
+        ("Split Required",          "#8e44ad"),
     ]
     counts = {}
     for item in items:
@@ -801,11 +801,11 @@ def _render_outcome_count_bar_html(items: list) -> str:
         counts[key] = counts.get(key, 0) + 1
 
     html = '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:4px">'
-    for label, color, bg in outcome_config:
+    for label, color in outcome_config:
         n = counts.get(label, 0)
         html += (
-            f'<div style="display:flex;align-items:center;gap:8px;background:{bg};'
-            f'border-radius:8px;padding:10px 16px;border:1px solid {color}40;min-width:150px">'
+            f'<div style="display:flex;align-items:center;gap:8px;background:#fff;'
+            f'border-radius:8px;padding:10px 16px;border:1px solid #e0e3e8;min-width:150px">'
             f'<div style="width:10px;height:10px;border-radius:50%;background:{color};flex-shrink:0"></div>'
             f'<div><div style="font-size:20px;font-weight:700;color:{color}">{n}</div>'
             f'<div style="font-size:11px;color:#888">{label}</div></div></div>'
@@ -813,7 +813,7 @@ def _render_outcome_count_bar_html(items: list) -> str:
     pending = counts.get("", 0)
     if pending:
         html += (
-            f'<div style="display:flex;align-items:center;gap:8px;background:#f8f9fa;'
+            f'<div style="display:flex;align-items:center;gap:8px;background:#fff;'
             f'border-radius:8px;padding:10px 16px;border:1px solid #e0e3e8;min-width:100px">'
             f'<div style="width:10px;height:10px;border-radius:50%;background:#bdc3c7;flex-shrink:0"></div>'
             f'<div><div style="font-size:20px;font-weight:700;color:#aaa">{pending}</div>'
@@ -834,13 +834,14 @@ def _render_summary_table_html(items: list) -> str:
                 f'background:{color}22;color:{color};border:1px solid {color}44">{text}</span>')
 
     rows = ""
-    for item in items:
+    for i, item in enumerate(items):
         clarity_full  = item.get("clarity_gradient", "") or ""
         zone          = item.get("threshold_zone", "") or ""
         outcome       = item.get("outcome", "") or ""
         notes         = item.get("outcome_notes", "") or ""
         clarity_short = clarity_full.replace(" Clarity", "")
         assessed_str  = _format_assessed_date(item.get("created_at", ""))
+        border        = "none" if i == len(items) - 1 else "1px solid #eef0f3"
 
         c_badge = badge(clarity_short, clarity_colors.get(clarity_short, "#7f8c8d")) if clarity_short else ""
         z_badge = badge(zone,          zone_colors.get(zone, "#7f8c8d"))             if zone          else ""
@@ -856,13 +857,13 @@ def _render_summary_table_html(items: list) -> str:
 
         rows += (
             f'<tr>'
-            f'<td style="padding:11px 14px;border-bottom:1px solid #eef0f3;font-size:13px">'
+            f'<td style="padding:11px 14px;border-bottom:{border};font-size:13px">'
             f'<strong>{_html.escape(item["title"])}</strong></td>'
-            f'<td style="padding:11px 14px;border-bottom:1px solid #eef0f3">{c_badge}</td>'
-            f'<td style="padding:11px 14px;border-bottom:1px solid #eef0f3">{z_badge}</td>'
-            f'<td style="padding:11px 14px;border-bottom:1px solid #eef0f3">{o_badge}</td>'
-            f'<td style="padding:11px 14px;border-bottom:1px solid #eef0f3">{notes_cell}</td>'
-            f'<td style="padding:11px 14px;border-bottom:1px solid #eef0f3;'
+            f'<td style="padding:11px 14px;border-bottom:{border}">{c_badge}</td>'
+            f'<td style="padding:11px 14px;border-bottom:{border}">{z_badge}</td>'
+            f'<td style="padding:11px 14px;border-bottom:{border}">{o_badge}</td>'
+            f'<td style="padding:11px 14px;border-bottom:{border}">{notes_cell}</td>'
+            f'<td style="padding:11px 14px;border-bottom:{border};'
             f'font-size:12px;color:#888">{assessed_str}</td>'
             f'</tr>'
         )
@@ -1913,39 +1914,41 @@ def page_summary():
 
     # ── Header ────────────────────────────────────────────────────────────────
     n = len(items)
-    st.markdown(
-        f'<h2 style="margin:0 0 4px 0;color:#1e2a3a">Session Summary</h2>'
-        f'<p style="margin:0;color:#888;font-size:13px">'
-        f'{_html.escape(session_name)}&nbsp;·&nbsp;{_html.escape(team_name)}'
-        f'&nbsp;·&nbsp;{n} item{"s" if n != 1 else ""}'
-        f'&nbsp;·&nbsp;<span style="background:#e8f5e9;color:#2e7d32;padding:1px 8px;'
-        f'border-radius:10px;font-size:11px;font-weight:600;border:1px solid #a5d6a7">'
-        f'Complete</span></p>',
-        unsafe_allow_html=True,
-    )
-
-    st.write("")
+    csv_data = _generate_summary_csv(items)
+    col_h, col_btn = st.columns([7, 2])
+    with col_h:
+        st.markdown(
+            f'<h1 style="margin:0 0 4px 0;color:#1e2a3a;font-size:26px;font-weight:700">Session Summary</h1>'
+            f'<p style="margin:0 0 20px 0;color:#888;font-size:13px">'
+            f'{_html.escape(session_name)}&nbsp;·&nbsp;{_html.escape(team_name)}'
+            f'&nbsp;·&nbsp;{n} item{"s" if n != 1 else ""}'
+            f'&nbsp;·&nbsp;<span style="background:#e8f5e9;color:#2e7d32;padding:1px 8px;'
+            f'border-radius:10px;font-size:11px;font-weight:600;border:1px solid #a5d6a7">'
+            f'Complete</span></p>',
+            unsafe_allow_html=True,
+        )
+    with col_btn:
+        st.write("")
+        st.download_button(
+            "Export CSV",
+            data=csv_data,
+            file_name=f"{session_name} Summary.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
 
     # ── Outcome count bar ─────────────────────────────────────────────────────
     st.markdown(_render_outcome_count_bar_html(items), unsafe_allow_html=True)
 
-    st.divider()
+    st.write("")
 
     # ── Summary table ─────────────────────────────────────────────────────────
     st.markdown(_render_summary_table_html(items), unsafe_allow_html=True)
 
     # ── Action buttons ────────────────────────────────────────────────────────
     st.write("")
-    csv_data = _generate_summary_csv(items)
-    btn1, btn2, _ = st.columns([2, 2, 6])
-    btn1.download_button(
-        "Export CSV",
-        data=csv_data,
-        file_name=f"{session_name} Summary.csv",
-        mime="text/csv",
-        use_container_width=True,
-    )
-    if btn2.button("Reopen Session", use_container_width=True):
+    _, btn_reopen, __ = st.columns([8, 2, 0.1])
+    if btn_reopen.button("Reopen Session", use_container_width=True):
         update_session_status(session_id, "in_progress")
         st.session_state["page"] = "run_session"
         st.rerun()
