@@ -608,12 +608,17 @@ def _zone_badge(zone: str) -> str:
 
 
 def _status_badge(status: str) -> str:
+    styles = {
+        "preparing":   "background:#f2f3f4;color:#546E7A;border:1px solid #cfd8dc",
+        "in_progress": "background:#fff3e0;color:#e65100;border:1px solid #ffcc80",
+        "complete":    "background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7",
+    }
     labels = {"preparing": "Preparing", "in_progress": "In Progress", "complete": "Complete"}
-    colors = {"preparing": "#7f8c8d", "in_progress": "#e67e22", "complete": "#27ae60"}
-    label  = labels.get(status, status.title())
-    color  = colors.get(status, "#7f8c8d")
-    return (f'<span style="background:{color};color:white;padding:1px 8px;'
-            f'border-radius:10px;font-size:0.78em;font-weight:600">{label}</span>')
+    label  = labels.get(status, status.replace("_", " ").title())
+    style  = styles.get(status, "background:#f2f3f4;color:#546E7A;border:1px solid #cfd8dc")
+    return (f'<span style="{style};display:inline-block;padding:2px 9px;'
+            f'border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap">'
+            f'{label}</span>')
 
 
 def _gaps_badge_html(count: int, kind: str = "gap") -> str:
@@ -1205,15 +1210,34 @@ def page_sessions():
 
     today        = date_type.today()
     default_name = f"Session — {today.strftime('%b')} {today.day} {today.year}"
+    sid          = st.session_state.get("session_id", "")
+    q            = f"sid={sid}&" if sid else ""
+
+    # ── Handle pending dialogs ────────────────────────────────────────────────
+    if pending_rename := st.session_state.pop("pending_session_rename_id", None):
+        sess_obj = next((s for s in sessions if str(s["id"]) == str(pending_rename)), None)
+        if sess_obj:
+            _dialog_rename_session(sess_obj)
+
+    if pending_delete := st.session_state.pop("pending_session_delete_id", None):
+        sess_obj = next((s for s in sessions if str(s["id"]) == str(pending_delete)), None)
+        if sess_obj:
+            _dialog_delete_session(sess_obj)
+
+    # ── Row hover CSS ─────────────────────────────────────────────────────────
+    st.markdown("""
+<style>
+.sess-row:hover { background: #f8f9fb !important; }
+</style>
+""", unsafe_allow_html=True)
 
     # ── Page header ──────────────────────────────────────────────────────────
-    n = len(sessions)
     hcol, bcol = st.columns([7, 2])
     hcol.markdown(
-        f'<h2 style="margin:0 0 4px 0;color:#1e2a3a">{_html.escape(team_name)}</h2>'
-        f'<p style="margin:0;color:#888;font-size:13px">Refinement sessions'
-        + (f'&nbsp;·&nbsp;{n} session{"s" if n != 1 else ""}' if sessions else '')
-        + '</p>',
+        f'<h1 style="margin:0 0 4px 0;color:#1e2a3a;font-size:26px;font-weight:700">'
+        f'Refinement Sessions</h1>'
+        f'<p style="margin:0 0 20px 0;color:#888;font-size:13px">'
+        f'{_html.escape(team_name)}</p>',
         unsafe_allow_html=True,
     )
     bcol.write("")
@@ -1252,51 +1276,53 @@ def page_sessions():
         )
         return
 
-    st.write("")
+    # ── Sessions table — pure HTML for reliable styling ───────────────────────
+    tbl = (
+        '<div style="background:#fff;border-radius:10px;'
+        'box-shadow:0 1px 4px rgba(0,0,0,0.08);overflow:hidden">'
+        '<div style="background:#1e2a3a;color:#fff;padding:10px 16px;'
+        'font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;'
+        'display:grid;grid-template-columns:4fr 2fr 1.2fr 2fr 1.5fr 1.5fr 1.5fr;gap:8px">'
+        '<div>Session</div><div>Status</div><div>Items</div><div>Created</div>'
+        '<div></div><div></div><div></div>'
+        '</div>'
+    )
 
-    # ── Table header ──────────────────────────────────────────────────────────
-    st.markdown("""
-<div style="background:#1e2a3a;color:#fff;padding:10px 12px;border-radius:8px 8px 0 0;
-            font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;
-            display:grid;grid-template-columns:4fr 2fr 1.2fr 2fr 2fr 2fr 2fr;gap:8px;
-            margin-bottom:0">
-  <div>Session</div><div>Status</div><div>Items</div><div>Created</div>
-  <div></div><div></div><div></div>
-</div>
-""", unsafe_allow_html=True)
+    btn_base  = ('text-decoration:none;display:inline-block;border-radius:5px;'
+                 'padding:5px 10px;font-size:12px;font-weight:600;white-space:nowrap')
+    btn_open  = f'{btn_base};background:#1565C0;color:#fff;border:1px solid #1565C0'
+    btn_sec   = f'{btn_base};background:#fff;color:#1e2a3a;border:1px solid #d0d4db'
+    btn_del   = f'{btn_base};background:#fff;color:#c62828;border:1px solid #ef9a9a'
 
-    for session in sessions:
+    for i, session in enumerate(sessions):
         status      = session.get("status", "preparing")
         total       = session.get("item_total",  0)
         tagged      = session.get("item_tagged", 0)
         created_str = _format_assessed_date(session.get("created_at", ""))
+        sid_s       = _html.escape(str(session["id"]))
+        sname       = _html.escape(session["name"])
+        border      = "" if i == len(sessions) - 1 else "border-bottom:1px solid #eef0f3"
 
-        c1, c2, c3, c4, c5, c6, c7 = st.columns([4, 2, 1.2, 2, 2, 2, 2])
-        c1.markdown(f"**{session['name']}**")
-        c2.markdown(_status_badge(status), unsafe_allow_html=True)
-        c3.write(f"{tagged}/{total}")
-        c4.write(created_str)
+        open_href   = f"?{q}_sess_action=open_session&sess_id={sid_s}&sess_status={status}"
+        rename_href = f"?{q}_sess_action=rename_session&sess_id={sid_s}"
+        delete_href = f"?{q}_sess_action=delete_session&sess_id={sid_s}"
 
-        if c5.button("Open", key=f"open_sess_{session['id']}",
-                     use_container_width=True, type="primary"):
-            st.session_state["current_session_id"]   = session["id"]
-            st.session_state["current_session_name"] = session["name"]
-            st.session_state["run_item_index"]        = 0
-            if status == "preparing":
-                st.session_state["page"] = "prepare"
-            elif status == "complete":
-                st.session_state["page"] = "summary"
-            else:
-                st.session_state["page"] = "run_session"
-            st.rerun()
+        tbl += (
+            f'<div class="sess-row" style="display:grid;'
+            f'grid-template-columns:4fr 2fr 1.2fr 2fr 1.5fr 1.5fr 1.5fr;'
+            f'padding:13px 16px;{border};align-items:center;font-size:13px">'
+            f'<div style="font-weight:700;color:#1e2a3a">{sname}</div>'
+            f'<div>{_status_badge(status)}</div>'
+            f'<div style="color:#555">{tagged}/{total}</div>'
+            f'<div style="color:#aaa;font-size:12px">{created_str}</div>'
+            f'<div><a href="{open_href}" target="_self" style="{btn_open}">Open</a></div>'
+            f'<div><a href="{rename_href}" target="_self" style="{btn_sec}">Rename</a></div>'
+            f'<div><a href="{delete_href}" target="_self" style="{btn_del}">Delete</a></div>'
+            f'</div>'
+        )
 
-        if c6.button("Rename", key=f"rename_sess_{session['id']}",
-                     use_container_width=True):
-            _dialog_rename_session(session)
-
-        if c7.button("Delete", key=f"delete_sess_{session['id']}",
-                     use_container_width=True):
-            _dialog_delete_session(session)
+    tbl += '</div>'
+    st.markdown(tbl, unsafe_allow_html=True)
 
 
 def page_prepare():
@@ -1844,6 +1870,37 @@ def show_topnav():
         elif team_action == "delete_team":
             st.session_state["pending_team_delete_id"] = tid
         st.session_state["page"] = "teams"
+        st.rerun()
+        return
+
+    # ── Handle session action params ──────────────────────────────────────────
+    sess_action  = st.query_params.get("_sess_action", "")
+    sess_id_val  = st.query_params.get("sess_id", "")
+    sess_status_val = st.query_params.get("sess_status", "")
+    if sess_action in ("open_session", "rename_session", "delete_session"):
+        for k in ("_sess_action", "sess_id", "sess_status"):
+            try:
+                del st.query_params[k]
+            except Exception:
+                pass
+        if sess_action == "open_session" and sess_id_val:
+            session_obj = get_session(sess_id_val)
+            if session_obj:
+                st.session_state["current_session_id"]   = sess_id_val
+                st.session_state["current_session_name"] = session_obj["name"]
+                st.session_state["run_item_index"]        = 0
+                if sess_status_val == "preparing":
+                    st.session_state["page"] = "prepare"
+                elif sess_status_val == "complete":
+                    st.session_state["page"] = "summary"
+                else:
+                    st.session_state["page"] = "run_session"
+        elif sess_action == "rename_session":
+            st.session_state["pending_session_rename_id"] = sess_id_val
+            st.session_state["page"] = "sessions"
+        elif sess_action == "delete_session":
+            st.session_state["pending_session_delete_id"] = sess_id_val
+            st.session_state["page"] = "sessions"
         st.rerun()
         return
 
