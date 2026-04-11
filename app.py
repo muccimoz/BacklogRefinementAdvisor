@@ -1070,8 +1070,17 @@ def page_teams():
     border: 1px solid #e0e3e8 !important;
     border-radius: 10px !important;
     box-shadow: 0 1px 4px rgba(0,0,0,0.07) !important;
+    padding: 20px !important;
 }
-[data-testid="stVerticalBlockBorderWrapper"] [data-testid="column"]:last-of-type
+[data-testid="stVerticalBlockBorderWrapper"] > div {
+    gap: 8px !important;
+}
+[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stButton"],
+[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stHorizontalBlock"] {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+}
+[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stColumn"]:last-of-type
     button[data-testid="stBaseButton-secondary"] {
     color: #c62828 !important;
     border-color: #ef9a9a !important;
