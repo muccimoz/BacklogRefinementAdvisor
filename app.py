@@ -1820,24 +1820,25 @@ def page_run_session():
     st.markdown(btns_html, unsafe_allow_html=True)
 
     # ── Notes + navigation on one row ─────────────────────────────────────────
-    note_col, ctr_col, prev_col, next_col = st.columns([7, 1, 1, 1])
+    note_col, prev_col, ctr_col, next_col = st.columns([7, 1.2, 1.2, 1.5])
 
     note_col.text_input(
         "Note",
         value=current_notes,
         key=f"notes_{item['id']}",
         label_visibility="collapsed",
-        placeholder="Optional facilitator note",
-    )
-    ctr_col.markdown(
-        f'<div style="text-align:center;padding-top:30px;font-size:13px;color:#aaa">'
-        f'{idx + 1}/{total}</div>',
-        unsafe_allow_html=True,
+        placeholder="Note: optional facilitator note",
     )
     if prev_col.button("← Prev", disabled=(idx == 0), use_container_width=True):
         st.session_state["run_item_index"] = idx - 1
         st.rerun()
-    if next_col.button("Next →", disabled=(idx == total - 1), use_container_width=True):
+    ctr_col.markdown(
+        f'<div style="text-align:center;padding-top:8px;font-size:13px;color:#aaa">'
+        f'{idx + 1} of {total}</div>',
+        unsafe_allow_html=True,
+    )
+    if next_col.button("Next →", disabled=(idx == total - 1),
+                       use_container_width=True, type="primary"):
         st.session_state["run_item_index"] = idx + 1
         st.rerun()
 
