@@ -1403,31 +1403,37 @@ def page_prepare():
     show_add  = st.session_state.get("show_add_item",  False)
     show_jira = st.session_state.get("show_jira_panel", False)
 
-    _btn_base = (
-        'text-decoration:none;display:inline-block;border-radius:6px;'
-        'padding:8px 16px;font-size:13px;font-weight:600;white-space:nowrap'
-    )
-    _btn_active   = f'{_btn_base};background:#1565C0;color:#fff;border:1px solid #1565C0'
-    _btn_inactive = f'{_btn_base};background:#fff;color:#1e2a3a;border:1px solid #d0d4db'
-    n_items       = len(items)
-    count_label   = f'{n_items} item{"s" if n_items != 1 else ""}'
-    add_href      = f'?{q}_prep_action=toggle_add'
-    jira_href     = f'?{q}_prep_action=toggle_jira'
+    n_items     = len(items)
+    count_label = f'{n_items} item{"s" if n_items != 1 else ""}'
 
-    st.markdown(
-        f'<div style="display:flex;align-items:center;justify-content:space-between;'
-        f'margin-bottom:12px">'
-        f'<div style="font-size:12px;font-weight:700;text-transform:uppercase;'
-        f'letter-spacing:0.5px;color:#999">'
-        f'Assessed Items&nbsp;·&nbsp;{count_label}</div>'
-        f'<div style="display:flex;gap:8px">'
-        f'<a href="{add_href}" target="_self" '
-        f'style="{_btn_active if show_add else _btn_inactive}">+ Add Item</a>'
-        f'<a href="{jira_href}" target="_self" '
-        f'style="{_btn_active if show_jira else _btn_inactive}">Import from Jira</a>'
-        f'</div></div>',
-        unsafe_allow_html=True,
-    )
+    if not show_add and not show_jira:
+        _btn_base = (
+            'text-decoration:none;display:inline-block;border-radius:6px;'
+            'padding:8px 16px;font-size:13px;font-weight:600;white-space:nowrap'
+        )
+        _btn_sec  = f'{_btn_base};background:#fff;color:#1e2a3a;border:1px solid #d0d4db'
+        add_href  = f'?{q}_prep_action=toggle_add'
+        jira_href = f'?{q}_prep_action=toggle_jira'
+
+        st.markdown(
+            f'<div style="display:flex;align-items:center;justify-content:space-between;'
+            f'margin-bottom:12px">'
+            f'<div style="font-size:12px;font-weight:700;text-transform:uppercase;'
+            f'letter-spacing:0.5px;color:#999">'
+            f'Assessed Items&nbsp;·&nbsp;{count_label}</div>'
+            f'<div style="display:flex;gap:8px">'
+            f'<a href="{add_href}" target="_self" style="{_btn_sec}">+ Add Item</a>'
+            f'<a href="{jira_href}" target="_self" style="{_btn_sec}">Import from Jira</a>'
+            f'</div></div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            f'<div style="font-size:12px;font-weight:700;text-transform:uppercase;'
+            f'letter-spacing:0.5px;color:#999;margin-bottom:12px">'
+            f'Assessed Items&nbsp;·&nbsp;{count_label}</div>',
+            unsafe_allow_html=True,
+        )
 
     # ── Add Item panel ────────────────────────────────────────────────────────
     if st.session_state.get("show_add_item"):
