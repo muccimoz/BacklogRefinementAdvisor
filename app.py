@@ -1182,7 +1182,8 @@ def page_teams():
             f'<a href="?{q}_team_action=add_team" target="_self"'
             f' style="display:flex;align-items:center;justify-content:center;'
             f'background:#f8f9fb;border:2px dashed #d0d4db;border-radius:10px;'
-            f'text-decoration:none;color:#1565C0;font-size:14px;font-weight:600">'
+            f'text-decoration:none;color:#1565C0;font-size:14px;font-weight:600;'
+            f'min-height:130px">'
             f'+ Add New Team</a>'
         )
     grid_html += '</div>'
