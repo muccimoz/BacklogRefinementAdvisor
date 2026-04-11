@@ -1340,6 +1340,12 @@ def page_prepare():
 
     items = get_backlog_items(session_id)
 
+    # ── Handle pending item delete dialog ────────────────────────────────────
+    if pending_del_id := st.session_state.pop("pending_item_delete_id", None):
+        item_to_del = next((i for i in items if str(i["id"]) == str(pending_del_id)), None)
+        if item_to_del:
+            _dialog_delete_item(item_to_del)
+
     if st.session_state.pop("item_submitted", None):
         st.success("Item assessed and added.")
     if st.session_state.pop("item_deleted", None):
@@ -1588,7 +1594,7 @@ def page_prepare():
                     st.session_state["show_jira_panel"] = False
                     st.rerun()
 
-    # ── Items table ───────────────────────────────────────────────────────────
+    # ── Items table — pure HTML ───────────────────────────────────────────────
     if not items:
         st.markdown(
             '<p style="color:#aaa;margin-top:16px">No items yet. '
@@ -1597,33 +1603,55 @@ def page_prepare():
         )
         return
 
-    st.write("")
-    st.markdown("""
-<div style="background:#1e2a3a;color:#fff;padding:10px 12px;border-radius:8px 8px 0 0;
-            font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;
-            display:grid;grid-template-columns:5fr 2fr 2fr 1fr 2fr 2fr 1.5fr;gap:8px;
-            margin-bottom:0">
-  <div>Backlog Item</div><div>Clarity</div><div>Refinement</div>
-  <div>Gaps</div><div>Uncertain</div><div>Assessed</div><div></div>
-</div>
-""", unsafe_allow_html=True)
+    st.markdown(
+        '<style>.item-row:hover { background:#f8f9fb !important; }</style>',
+        unsafe_allow_html=True,
+    )
 
-    for item in items:
-        clarity_full  = item.get("clarity_gradient", "")
-        zone          = item.get("threshold_zone", "")
-        clarity_short = clarity_full.replace(" Clarity", "")
-        assessed_str  = _format_assessed_date(item.get("created_at", ""))
+    btn_del = (
+        'text-decoration:none;display:inline-block;border-radius:5px;'
+        'padding:5px 10px;font-size:12px;font-weight:600;white-space:nowrap;'
+        'background:#fff;color:#c62828;border:1px solid #ef9a9a'
+    )
+
+    tbl = (
+        '<div style="background:#fff;border-radius:10px;'
+        'box-shadow:0 1px 4px rgba(0,0,0,0.08);overflow:hidden;margin-top:8px">'
+        '<div style="background:#1e2a3a;color:#fff;padding:10px 16px;'
+        'font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;'
+        'display:grid;grid-template-columns:5fr 2fr 2fr 1fr 2fr 2fr 1.5fr;gap:8px">'
+        '<div>Item</div><div>Clarity</div><div>Refinement</div>'
+        '<div>Gaps</div><div>Uncertain</div><div>Assessed</div><div></div>'
+        '</div>'
+    )
+
+    for i, item in enumerate(items):
+        clarity_full    = item.get("clarity_gradient", "")
+        zone            = item.get("threshold_zone", "")
+        clarity_short   = clarity_full.replace(" Clarity", "")
+        assessed_str    = _format_assessed_date(item.get("created_at", ""))
         gaps, uncertain = _count_checklist_gaps(item.get("gemini_output", ""))
+        item_id_s       = _html.escape(str(item["id"]))
+        title_s         = _html.escape(item["title"])
+        border          = "" if i == len(items) - 1 else "border-bottom:1px solid #eef0f3"
+        delete_href     = f"?{q}_item_action=delete_item&item_id={item_id_s}"
 
-        c1, c2, c3, c4, c5, c6, c7 = st.columns([5, 2, 2, 1, 2, 2, 2])
-        c1.write(f"**{item['title']}**")
-        c2.markdown(_clarity_badge(clarity_short), unsafe_allow_html=True)
-        c3.markdown(_zone_badge(zone), unsafe_allow_html=True)
-        c4.markdown(_gaps_badge_html(gaps, "gap"), unsafe_allow_html=True)
-        c5.markdown(_gaps_badge_html(uncertain, "uncertain"), unsafe_allow_html=True)
-        c6.write(assessed_str)
-        if c7.button("Delete", key=f"del_{item['id']}"):
-            _dialog_delete_item(item)
+        tbl += (
+            f'<div class="item-row" style="display:grid;'
+            f'grid-template-columns:5fr 2fr 2fr 1fr 2fr 2fr 1.5fr;'
+            f'padding:12px 16px;{border};align-items:center;font-size:13px">'
+            f'<div style="font-weight:700;color:#1e2a3a">{title_s}</div>'
+            f'<div>{_clarity_badge(clarity_short)}</div>'
+            f'<div>{_zone_badge(zone)}</div>'
+            f'<div>{_gaps_badge_html(gaps, "gap")}</div>'
+            f'<div>{_gaps_badge_html(uncertain, "uncertain")}</div>'
+            f'<div style="color:#aaa;font-size:12px">{assessed_str}</div>'
+            f'<div><a href="{delete_href}" target="_self" style="{btn_del}">Delete</a></div>'
+            f'</div>'
+        )
+
+    tbl += '</div>'
+    st.markdown(tbl, unsafe_allow_html=True)
 
 
 
@@ -1917,6 +1945,20 @@ def show_topnav():
             update_session_status(sess_id_val, "in_progress")
             st.session_state["run_item_index"] = 0
             st.session_state["page"] = "run_session"
+        st.rerun()
+        return
+
+    # ── Handle item actions (delete_item) ────────────────────────────────────
+    item_action = st.query_params.get("_item_action", "")
+    item_id_val = st.query_params.get("item_id", "")
+    if item_action in ("delete_item",):
+        for k in ("_item_action", "item_id"):
+            try:
+                del st.query_params[k]
+            except Exception:
+                pass
+        if item_action == "delete_item" and item_id_val:
+            st.session_state["pending_item_delete_id"] = item_id_val
         st.rerun()
         return
 
