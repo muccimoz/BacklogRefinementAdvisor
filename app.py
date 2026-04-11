@@ -1403,29 +1403,31 @@ def page_prepare():
     show_add  = st.session_state.get("show_add_item",  False)
     show_jira = st.session_state.get("show_jira_panel", False)
 
-    tb_lbl, _, tb_add, tb_jira = st.columns([4, 2, 2, 2])
-    tb_lbl.markdown(
+    _btn_base = (
+        'text-decoration:none;display:inline-block;border-radius:6px;'
+        'padding:8px 16px;font-size:13px;font-weight:600;white-space:nowrap'
+    )
+    _btn_active   = f'{_btn_base};background:#1565C0;color:#fff;border:1px solid #1565C0'
+    _btn_inactive = f'{_btn_base};background:#fff;color:#1e2a3a;border:1px solid #d0d4db'
+    n_items       = len(items)
+    count_label   = f'{n_items} item{"s" if n_items != 1 else ""}'
+    add_href      = f'?{q}_prep_action=toggle_add'
+    jira_href     = f'?{q}_prep_action=toggle_jira'
+
+    st.markdown(
+        f'<div style="display:flex;align-items:center;justify-content:space-between;'
+        f'margin-bottom:12px">'
         f'<div style="font-size:12px;font-weight:700;text-transform:uppercase;'
-        f'letter-spacing:0.5px;color:#999;padding-top:8px">'
-        f'Assessed Items&nbsp;·&nbsp;{len(items)} item{"s" if len(items) != 1 else ""}'
-        f'</div>',
+        f'letter-spacing:0.5px;color:#999">'
+        f'Assessed Items&nbsp;·&nbsp;{count_label}</div>'
+        f'<div style="display:flex;gap:8px">'
+        f'<a href="{add_href}" target="_self" '
+        f'style="{_btn_active if show_add else _btn_inactive}">+ Add Item</a>'
+        f'<a href="{jira_href}" target="_self" '
+        f'style="{_btn_active if show_jira else _btn_inactive}">Import from Jira</a>'
+        f'</div></div>',
         unsafe_allow_html=True,
     )
-    if tb_add.button("+ Add Item", key="btn_toggle_add", use_container_width=True):
-        new_val = not show_add
-        st.session_state["show_add_item"] = new_val
-        if new_val:
-            st.session_state["show_jira_panel"] = False
-            st.session_state.pop("jira_issues", None)
-        st.rerun()
-    if tb_jira.button("Import from Jira", key="btn_toggle_jira", use_container_width=True):
-        new_val = not show_jira
-        st.session_state["show_jira_panel"] = new_val
-        if new_val:
-            st.session_state["show_add_item"] = False
-        if not new_val:
-            st.session_state.pop("jira_issues", None)
-        st.rerun()
 
     # ── Add Item panel ────────────────────────────────────────────────────────
     if st.session_state.get("show_add_item"):
@@ -1959,6 +1961,29 @@ def show_topnav():
                 pass
         if item_action == "delete_item" and item_id_val:
             st.session_state["pending_item_delete_id"] = item_id_val
+        st.rerun()
+        return
+
+    # ── Handle prepare-page toolbar toggles ──────────────────────────────────
+    prep_action = st.query_params.get("_prep_action", "")
+    if prep_action in ("toggle_add", "toggle_jira"):
+        try:
+            del st.query_params["_prep_action"]
+        except Exception:
+            pass
+        if prep_action == "toggle_add":
+            new_val = not st.session_state.get("show_add_item", False)
+            st.session_state["show_add_item"] = new_val
+            if new_val:
+                st.session_state["show_jira_panel"] = False
+                st.session_state.pop("jira_issues", None)
+        elif prep_action == "toggle_jira":
+            new_val = not st.session_state.get("show_jira_panel", False)
+            st.session_state["show_jira_panel"] = new_val
+            if new_val:
+                st.session_state["show_add_item"] = False
+            if not new_val:
+                st.session_state.pop("jira_issues", None)
         st.rerun()
         return
 
