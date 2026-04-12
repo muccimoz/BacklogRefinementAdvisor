@@ -2883,7 +2883,7 @@ def show_topnav():
     white-space: nowrap; margin-right: 24px; letter-spacing: 0.3px;
     text-decoration: none !important;
 }
-.tn-items { display: flex; align-items: center; gap: 2px; flex: 1; overflow: hidden; }
+.tn-nav { display: flex; align-items: center; gap: 2px; flex: 1; }
 a.tn-btn {
     display: inline-block; text-decoration: none !important;
     font-size: 13px; font-weight: 600;
@@ -2908,7 +2908,7 @@ span.tn-current {
     flex-shrink: 0;
 }
 .tn-right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
-.tn-user  { font-size: 12px; color: #7f8c8d; white-space: nowrap; }
+.tn-user  { font-size: 12px; color: #aab4be; white-space: nowrap; }
 a.tn-logout {
     text-decoration: none !important; white-space: nowrap;
     background: none; border: 1px solid #3d5166;
@@ -2919,44 +2919,30 @@ a.tn-logout:hover { border-color: #aaa; color: #fff !important; }
 </style>
 """, unsafe_allow_html=True)
 
-    # ── Build breadcrumb ──────────────────────────────────────────────────────
+    # ── Build nav links ───────────────────────────────────────────────────────
     q = f"sid={sid}&" if sid else ""
 
     if page == "teams":
-        crumb = '<span class="tn-current">Your Teams</span>'
-
-    elif page == "sessions":
-        team_sel = _build_team_options_html(q, team_id)
-        crumb = (
-            f'<a href="?{q}_nav=teams" target="_self" class="tn-btn tn-inactive">Your Teams</a>'
-            f'<span class="tn-sep">›</span>'
-            f'{team_sel}'
-            f'<span class="tn-sep">›</span>'
-            f'<span class="tn-current">Sessions</span>'
-        )
-
-    elif page in ("prepare", "run_session", "summary"):
-        raw   = sess_name or "Session"
-        label = _html.escape((raw[:22] + "…") if len(raw) > 22 else raw)
-        team_sel = _build_team_options_html(q, team_id)
-        crumb = (
-            f'<a href="?{q}_nav=teams" target="_self" class="tn-btn tn-inactive">Your Teams</a>'
-            f'<span class="tn-sep">›</span>'
-            f'{team_sel}'
-            f'<span class="tn-sep">›</span>'
-            f'<a href="?{q}_nav=sessions" target="_self" class="tn-btn tn-inactive">Sessions</a>'
-            f'<span class="tn-sep">›</span>'
-            f'<span class="tn-current">{label}</span>'
-        )
-
+        teams_link = '<span class="tn-current">Your Teams</span>'
     else:
-        crumb = '<span class="tn-current">Your Teams</span>'
+        teams_link = (
+            f'<a href="?{q}_nav=teams" target="_self" class="tn-btn tn-inactive">Your Teams</a>'
+        )
+
+    sessions_link = ""
+    if team_id:
+        if page in ("sessions", "prepare", "run_session", "summary"):
+            sessions_link = '<span class="tn-current">Sessions</span>'
+        else:
+            sessions_link = (
+                f'<a href="?{q}_nav=sessions" target="_self" class="tn-btn tn-inactive">Sessions</a>'
+            )
 
     # ── Render nav bar HTML ───────────────────────────────────────────────────
     st.markdown(f"""
 <div class="tn-bar">
   <span class="tn-brand">Backlog Refinement Advisor</span>
-  <div class="tn-items">{crumb}</div>
+  <div class="tn-nav">{teams_link}{sessions_link}</div>
   <div class="tn-right">
     <span class="tn-user">{email}</span>
     <a href="?{q}_nav=logout" target="_self" class="tn-logout">Log Out</a>
