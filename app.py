@@ -1233,7 +1233,7 @@ def page_teams():
             '<div style="width:36px;height:36px;border-radius:50%;background:#1565C0;color:#fff;'
             'font-size:15px;font-weight:700;display:flex;align-items:center;justify-content:center;'
             'margin:0 auto 12px">1</div>'
-            '<div style="font-size:14px;font-weight:700;color:#1e2a3a;margin-bottom:8px">Prepare</div>'
+            '<div style="font-size:14px;font-weight:700;color:#1e2a3a;margin-bottom:8px">Session Preparation</div>'
             '<div style="font-size:12px;color:#888;line-height:1.5">'
             'Import items from Jira or add them manually. Claude assesses each one against '
             '14 readiness criteria — before your meeting starts.</div></div>'
@@ -1246,7 +1246,7 @@ def page_teams():
             '<div style="width:36px;height:36px;border-radius:50%;background:#1565C0;color:#fff;'
             'font-size:15px;font-weight:700;display:flex;align-items:center;justify-content:center;'
             'margin:0 auto 12px">2</div>'
-            '<div style="font-size:14px;font-weight:700;color:#1e2a3a;margin-bottom:8px">Run Session</div>'
+            '<div style="font-size:14px;font-weight:700;color:#1e2a3a;margin-bottom:8px">Session Review</div>'
             '<div style="font-size:12px;color:#888;line-height:1.5">'
             'Project the screen in your refinement meeting. Review Claude\'s assessment with your '
             'team item by item, then tag an outcome.</div></div>'
@@ -1413,7 +1413,7 @@ def page_sessions():
     hcol, bcol = st.columns([7, 2])
     hcol.markdown(
         f'<h1 style="margin:0 0 4px 0;color:#1e2a3a;font-size:26px;font-weight:700">'
-        f'Refinement Sessions</h1>'
+        f'Session List</h1>'
         f'<p style="margin:0 0 20px 0;color:#555;font-size:15px">'
         f'<strong style="color:#1e2a3a">Session List</strong>'
         f'&nbsp;&nbsp;·&nbsp;&nbsp;{_html.escape(team_name)}</p>',
@@ -1584,12 +1584,12 @@ def page_prepare():
     col_hdr.markdown(
         f'<a href="?{q}_nav=sessions" target="_self"'
         f' style="font-size:13px;color:#1565C0;text-decoration:none;font-weight:600;'
-        f'display:inline-block;margin-bottom:6px">← Sessions</a>'
+        f'display:inline-block;margin-bottom:6px">← Session List</a>'
         f'<h1 style="margin:0 0 4px 0;color:#1e2a3a;font-size:26px;font-weight:700">'
         f'{_html.escape(session_name)}</h1>'
         f'<p style="margin:0 0 20px 0;color:#555;font-size:15px">'
-        f'<strong style="color:#1e2a3a">Prepare Session</strong>'
-        f'&nbsp;&nbsp;·&nbsp;&nbsp;Team: {_html.escape(team_name)}&nbsp;|&nbsp;Status: Preparing</p>',
+        f'<strong style="color:#1e2a3a">Session Preparation</strong>'
+        f'&nbsp;&nbsp;·&nbsp;&nbsp;Team: {_html.escape(team_name)}</p>',
         unsafe_allow_html=True,
     )
     if start_disabled:
@@ -2422,7 +2422,7 @@ def page_run_session():
 
     if not all_items:
         st.warning("No items in this session.")
-        if st.button("Back to Prepare"):
+        if st.button("Back to Session Preparation"):
             st.session_state["page"] = "prepare"
             st.rerun()
         return
@@ -2479,7 +2479,7 @@ def page_run_session():
         f'<h1 style="margin:0 0 4px 0;color:#1e2a3a;font-size:26px;font-weight:700">'
         f'{_html.escape(session_name)}</h1>'
         f'<p style="margin:0 0 10px 0;color:#555;font-size:15px">'
-        f'<strong style="color:#1e2a3a">Run Session</strong>'
+        f'<strong style="color:#1e2a3a">Session Review</strong>'
         f'&nbsp;&nbsp;·&nbsp;&nbsp;Team: {_html.escape(team_name)}&nbsp;|&nbsp;Item {idx + 1} of {total}</p>'
         f'<div style="display:flex;gap:0;align-items:center">{dots_html}</div>',
         unsafe_allow_html=True,
@@ -2945,10 +2945,10 @@ a.tn-logout:hover { border-color: #aaa; color: #fff !important; }
     sessions_link = ""
     if team_id:
         if page in ("sessions", "prepare", "run_session", "summary"):
-            sessions_link = '<span class="tn-current">Sessions</span>'
+            sessions_link = '<span class="tn-current">Session List</span>'
         else:
             sessions_link = (
-                f'<a href="?{q}_nav=sessions" target="_self" class="tn-btn tn-inactive">Sessions</a>'
+                f'<a href="?{q}_nav=sessions" target="_self" class="tn-btn tn-inactive">Session List</a>'
             )
 
     # ── Render nav bar HTML ───────────────────────────────────────────────────
