@@ -2659,7 +2659,7 @@ def page_summary():
 
 # ── Top navigation ─────────────────────────────────────────────────────────────
 def _build_team_options_html(q: str, current_team_id: str) -> str:
-    """Return an HTML <select> (or plain text) for the team breadcrumb slot."""
+    """Return team links for the breadcrumb — current team highlighted, others clickable."""
     try:
         teams = get_teams()
     except Exception:
@@ -2667,16 +2667,21 @@ def _build_team_options_html(q: str, current_team_id: str) -> str:
     if not teams:
         name = _html.escape(st.session_state.get("current_team_name", "Team"))
         return f'<span style="color:#90CAF9;font-size:13px;font-weight:600">{name}</span>'
-    opts = ""
+    parts = []
     for t in teams:
-        sel   = "selected" if t["id"] == current_team_id else ""
         label = _html.escape(t["name"])
-        opts += f'<option value="{t["id"]}" {sel}>{label}</option>'
-    return (
-        f'<select class="tn-select" '
-        f'onchange="window.location=\'?{q}_team=\'+encodeURIComponent(this.value)">'
-        f'{opts}</select>'
-    )
+        if str(t["id"]) == str(current_team_id):
+            parts.append(
+                f'<span style="color:#90CAF9;font-size:13px;font-weight:600">{label}</span>'
+            )
+        else:
+            parts.append(
+                f'<a href="?{q}_team={t["id"]}" target="_self"'
+                f' style="color:#ccc;font-size:13px;font-weight:500;text-decoration:none"'
+                f' onmouseover="this.style.color=\'#fff\'"'
+                f' onmouseout="this.style.color=\'#ccc\'">{label}</a>'
+            )
+    return '<span style="display:inline-flex;gap:12px;align-items:center">' + "".join(parts) + '</span>'
 
 
 def show_topnav():
