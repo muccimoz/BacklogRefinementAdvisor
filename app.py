@@ -2612,25 +2612,40 @@ def page_summary():
 
     items = list(reversed(get_backlog_items(session_id)))
 
-    # Auto-mark as complete when summary is viewed
+    # Mark complete only if every item has an outcome; otherwise keep/set in_progress
+    all_tagged = bool(items) and all(item.get("outcome") for item in items)
     session = get_session(session_id)
-    if session and session.get("status") != "complete":
-        update_session_status(session_id, "complete")
+    if all_tagged:
+        if session and session.get("status") != "complete":
+            update_session_status(session_id, "complete")
+    else:
+        if session and session.get("status") not in ("in_progress", "preparing"):
+            update_session_status(session_id, "in_progress")
 
     # ── Header ────────────────────────────────────────────────────────────────
     n = len(items)
     csv_data = _generate_summary_csv(items)
     col_h, col_btn = st.columns([7, 2])
     with col_h:
+        if all_tagged:
+            status_badge = (
+                '<span style="background:#e8f5e9;color:#2e7d32;padding:1px 8px;'
+                'border-radius:10px;font-size:11px;font-weight:600;border:1px solid #a5d6a7">'
+                'Complete</span>'
+            )
+        else:
+            status_badge = (
+                '<span style="background:#e3f2fd;color:#1565c0;padding:1px 8px;'
+                'border-radius:10px;font-size:11px;font-weight:600;border:1px solid #90caf9">'
+                'In Progress</span>'
+            )
         st.markdown(
             f'<h1 style="margin:0 0 4px 0;color:#1e2a3a;font-size:26px;font-weight:700">Session Summary</h1>'
             f'<p style="margin:0 0 20px 0;color:#555;font-size:15px">'
             f'<strong style="color:#1e2a3a">Session Summary</strong>&nbsp;&nbsp;·&nbsp;&nbsp;'
             f'{_html.escape(session_name)}&nbsp;·&nbsp;Team: {_html.escape(team_name)}'
             f'&nbsp;·&nbsp;{n} item{"s" if n != 1 else ""}'
-            f'&nbsp;·&nbsp;<span style="background:#e8f5e9;color:#2e7d32;padding:1px 8px;'
-            f'border-radius:10px;font-size:11px;font-weight:600;border:1px solid #a5d6a7">'
-            f'Complete</span></p>',
+            f'&nbsp;·&nbsp;{status_badge}</p>',
             unsafe_allow_html=True,
         )
     with col_btn:
