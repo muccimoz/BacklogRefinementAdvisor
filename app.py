@@ -2626,7 +2626,7 @@ def page_summary():
             f'<h1 style="margin:0 0 4px 0;color:#1e2a3a;font-size:26px;font-weight:700">Session Summary</h1>'
             f'<p style="margin:0 0 20px 0;color:#555;font-size:15px">'
             f'<strong style="color:#1e2a3a">Session Summary</strong>&nbsp;&nbsp;·&nbsp;&nbsp;'
-            f'{_html.escape(session_name)}&nbsp;·&nbsp;{_html.escape(team_name)}'
+            f'{_html.escape(session_name)}&nbsp;·&nbsp;Team: {_html.escape(team_name)}'
             f'&nbsp;·&nbsp;{n} item{"s" if n != 1 else ""}'
             f'&nbsp;·&nbsp;<span style="background:#e8f5e9;color:#2e7d32;padding:1px 8px;'
             f'border-radius:10px;font-size:11px;font-weight:600;border:1px solid #a5d6a7">'
