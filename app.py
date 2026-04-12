@@ -2959,7 +2959,7 @@ a.tn-logout:hover { border-color: #aaa; color: #fff !important; }
 
     sessions_link = ""
     if team_id:
-        if page in ("sessions", "prepare", "run_session", "summary"):
+        if page == "sessions":
             sessions_link = '<span class="tn-current">Session List</span>'
         else:
             sessions_link = (
