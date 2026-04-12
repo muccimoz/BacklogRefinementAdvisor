@@ -1648,7 +1648,12 @@ def page_prepare():
                     key="jira_jql_input",
                     help='Replace the project key and adjust the query as needed. Example: project = PAY AND issuetype = Story AND sprint = "Sprint 24"',
                 )
-                if st.button("Fetch Issues", key="btn_jira_fetch", type="primary"):
+                _jfetch_col, _jcancel_col, _ = st.columns([2, 2, 6])
+                if _jcancel_col.button("Cancel", key="btn_jira_cancel_step1", use_container_width=True):
+                    st.session_state["show_jira_panel"] = False
+                    st.rerun()
+                if _jfetch_col.button("Fetch Issues", key="btn_jira_fetch", type="primary",
+                                      use_container_width=True):
                     if not jql.strip():
                         st.warning("Enter a JQL query.")
                     else:
