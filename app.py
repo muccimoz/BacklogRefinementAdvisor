@@ -1497,16 +1497,26 @@ def page_prepare():
     if st.session_state.get("show_add_item"):
         with st.container(border=True):
             st.subheader("Add Backlog Item")
+            st.caption("More detail in each field = more specific assessment from Claude.")
             with st.form("add_item_form"):
                 title               = st.text_input("Title *")
+                st.caption("A clear, specific title helps Claude understand scope immediately.")
                 description         = st.text_area("Description", height=100,
                                                    placeholder="What needs to be done and why")
+                st.caption("Include the user need and relevant context. The more detail here, the better Claude can assess clarity and vagueness.")
                 acceptance_criteria = st.text_area("Acceptance Criteria", height=100,
                                                    placeholder="What must be true for this item to be considered complete")
+                st.markdown(
+                    '<p style="font-size:12px;color:#e65100;margin:0">⚠ If left blank, '
+                    'Claude will flag missing acceptance criteria as a checklist gap.</p>',
+                    unsafe_allow_html=True,
+                )
                 dependencies        = st.text_input("Dependencies",
                                                    placeholder="Other items or systems this relies on")
+                st.caption("Any teams, services, or stories this item relies on. If blank, Claude assumes none.")
                 assumptions         = st.text_input("Assumptions",
                                                    placeholder="What the team is taking as given")
+                st.caption("Unstated assumptions are a common sprint surprise. List them here so Claude can flag risks.")
                 notes               = st.text_area("Notes", height=80,
                                                   placeholder="Anything else relevant")
                 btn_col1, btn_col2 = st.columns([3, 1])
