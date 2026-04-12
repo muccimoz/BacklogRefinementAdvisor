@@ -365,7 +365,7 @@ def delete_team(team_id: str):
 
 def get_refinement_sessions(team_id: str) -> list:
     try:
-        r = db().table("refinement_sessions").select("id, name, status, created_at").eq(
+        r = db().table("refinement_sessions").select("id, name, status, session_date, created_at").eq(
             "team_id", team_id
         ).order("created_at", desc=True).execute()
         return r.data or []
@@ -376,7 +376,7 @@ def get_refinement_sessions(team_id: str) -> list:
 def get_refinement_sessions_with_counts(team_id: str) -> list:
     try:
         sessions = db().table("refinement_sessions").select(
-            "id, name, status, created_at"
+            "id, name, status, session_date, created_at"
         ).eq("team_id", team_id).order("created_at", desc=True).execute().data or []
         if not sessions:
             return []
@@ -399,11 +399,11 @@ def get_refinement_sessions_with_counts(team_id: str) -> list:
         return []
 
 
-def create_refinement_session(team_id: str, name: str):
-    db().table("refinement_sessions").insert({
-        "team_id": team_id,
-        "name":    name,
-    }).execute()
+def create_refinement_session(team_id: str, name: str, session_date: str | None = None):
+    row = {"team_id": team_id, "name": name}
+    if session_date:
+        row["session_date"] = session_date
+    db().table("refinement_sessions").insert(row).execute()
 
 
 def update_refinement_session(session_id: str, name: str):
@@ -988,6 +988,17 @@ def _format_assessed_date(iso_str: str) -> str:
         return iso_str[:10] if iso_str else ""
 
 
+def _format_session_date(session_date: str | None, fallback_created_at: str = "") -> str:
+    """Format a YYYY-MM-DD session date; falls back to created_at if not set."""
+    if session_date:
+        try:
+            d = date_type.fromisoformat(session_date)
+            return f"{d.day} {d.strftime('%b %Y')}"
+        except Exception:
+            return session_date
+    return _format_assessed_date(fallback_created_at) if fallback_created_at else ""
+
+
 # ── Dialogs ────────────────────────────────────────────────────────────────────
 @st.dialog("Rename Team")
 def _dialog_rename_team(team: dict):
@@ -1316,14 +1327,17 @@ def page_sessions():
     if st.session_state.get("show_add_session") or not sessions:
         with st.container(border=True):
             with st.form("add_session"):
-                name = st.text_input("Session Name", value=default_name)
+                name         = st.text_input("Session Name", value=default_name)
+                session_date = st.date_input("Session Date", value=today,
+                                             help="Optional — helps distinguish sessions when planning multiple sprints ahead.")
                 c1, c2 = st.columns([3, 1])
                 submitted = c1.form_submit_button("Add Session", type="primary",
                                                   use_container_width=True)
                 cancelled = c2.form_submit_button("Cancel", use_container_width=True)
             if submitted:
                 if name.strip():
-                    create_refinement_session(team_id, name.strip())
+                    date_str = session_date.isoformat() if session_date else None
+                    create_refinement_session(team_id, name.strip(), date_str)
                     st.session_state["session_created"]      = True
                     st.session_state["session_created_name"] = f"Session '{name.strip()}' created."
                     st.session_state.pop("show_add_session", None)
@@ -1349,7 +1363,7 @@ def page_sessions():
         '<div style="background:#1e2a3a;color:#fff;padding:10px 16px;'
         'font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;'
         'display:grid;grid-template-columns:4fr 2fr 1.2fr 2fr 1.5fr 1.5fr 1.5fr;gap:8px">'
-        '<div>Session</div><div>Status</div><div>Items</div><div>Created</div>'
+        '<div>Session</div><div>Status</div><div>Items</div><div>Date</div>'
         '<div></div><div></div><div></div>'
         '</div>'
     )
@@ -1364,7 +1378,7 @@ def page_sessions():
         status      = session.get("status", "preparing")
         total       = session.get("item_total",  0)
         tagged      = session.get("item_tagged", 0)
-        created_str = _format_assessed_date(session.get("created_at", ""))
+        date_str    = _format_session_date(session.get("session_date"), session.get("created_at", ""))
         sid_s       = _html.escape(str(session["id"]))
         sname       = _html.escape(session["name"])
         border      = "" if i == len(sessions) - 1 else "border-bottom:1px solid #eef0f3"
@@ -1380,7 +1394,7 @@ def page_sessions():
             f'<div style="font-weight:700;color:#1e2a3a">{sname}</div>'
             f'<div>{_status_badge(status)}</div>'
             f'<div style="color:#555">{tagged}/{total}</div>'
-            f'<div style="color:#aaa;font-size:12px">{created_str}</div>'
+            f'<div style="color:#aaa;font-size:12px">{date_str}</div>'
             f'<div><a href="{open_href}" target="_self" style="{btn_open}">Open</a></div>'
             f'<div><a href="{rename_href}" target="_self" style="{btn_sec}">Rename</a></div>'
             f'<div><a href="{delete_href}" target="_self" style="{btn_del}">Delete</a></div>'
