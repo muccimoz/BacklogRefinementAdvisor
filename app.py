@@ -2029,6 +2029,33 @@ def page_prepare():
                     st.rerun()
 
                 st.write("")
+                # Column headers
+                _hcb, _htitle, _hdesc, _hac, _hdep = st.columns([1, 5, 5, 2, 2])
+                _htitle.markdown(
+                    '<div style="font-size:11px;font-weight:700;text-transform:uppercase;'
+                    'letter-spacing:0.4px;color:#888;padding-bottom:4px;'
+                    'border-bottom:1px solid #e0e3e8">Title</div>',
+                    unsafe_allow_html=True,
+                )
+                _hdesc.markdown(
+                    '<div style="font-size:11px;font-weight:700;text-transform:uppercase;'
+                    'letter-spacing:0.4px;color:#888;padding-bottom:4px;'
+                    'border-bottom:1px solid #e0e3e8">Description preview</div>',
+                    unsafe_allow_html=True,
+                )
+                _hac.markdown(
+                    '<div style="font-size:11px;font-weight:700;text-transform:uppercase;'
+                    'letter-spacing:0.4px;color:#888;padding-bottom:4px;'
+                    'border-bottom:1px solid #e0e3e8">AC</div>',
+                    unsafe_allow_html=True,
+                )
+                _hdep.markdown(
+                    '<div style="font-size:11px;font-weight:700;text-transform:uppercase;'
+                    'letter-spacing:0.4px;color:#888;padding-bottom:4px;'
+                    'border-bottom:1px solid #e0e3e8">Dependencies</div>',
+                    unsafe_allow_html=True,
+                )
+
                 _ac_blank_count = 0
                 for _ri, _rrow in enumerate(_r_rows):
                     _r_title = _csv_val(_rrow, "Title")
@@ -2159,11 +2186,12 @@ def page_prepare():
 
     # ── Items table — pure HTML ───────────────────────────────────────────────
     if not items:
-        st.markdown(
-            '<p style="color:#aaa;margin-top:16px">No items yet. '
-            'Use "+ Add Item" or "&#8595; Import" to add and assess backlog items.</p>',
-            unsafe_allow_html=True,
-        )
+        if not show_add and not show_jira and not show_csv:
+            st.markdown(
+                '<p style="color:#aaa;margin-top:16px">No items yet. '
+                'Use "+ Add Item", "Import from Jira", or "Import from CSV" to add and assess backlog items.</p>',
+                unsafe_allow_html=True,
+            )
         return
 
     st.markdown(
