@@ -184,6 +184,12 @@ def load_server_session(sid: str) -> bool:
                 st.session_state["current_session_id"] = row["current_session_id"]
             if row.get("current_session_name"):
                 st.session_state["current_session_name"] = row["current_session_name"]
+            try:
+                user = get_supabase().auth.get_user()
+                if user and user.user:
+                    st.session_state["user_email"] = user.user.email
+            except Exception:
+                pass
             return True
         return False
     except Exception:
