@@ -1414,8 +1414,9 @@ def page_sessions():
     hcol.markdown(
         f'<h1 style="margin:0 0 4px 0;color:#1e2a3a;font-size:26px;font-weight:700">'
         f'Refinement Sessions</h1>'
-        f'<p style="margin:0 0 20px 0;color:#888;font-size:13px">'
-        f'{_html.escape(team_name)}</p>',
+        f'<p style="margin:0 0 20px 0;color:#555;font-size:15px">'
+        f'<strong style="color:#1e2a3a">Session List</strong>'
+        f'&nbsp;&nbsp;·&nbsp;&nbsp;{_html.escape(team_name)}</p>',
         unsafe_allow_html=True,
     )
     bcol.write("")
@@ -1581,11 +1582,14 @@ def page_prepare():
 
     col_hdr, col_start = st.columns([7, 2])
     col_hdr.markdown(
+        f'<a href="?{q}_nav=sessions" target="_self"'
+        f' style="font-size:13px;color:#1565C0;text-decoration:none;font-weight:600;'
+        f'display:inline-block;margin-bottom:6px">← Sessions</a>'
         f'<h1 style="margin:0 0 4px 0;color:#1e2a3a;font-size:26px;font-weight:700">'
         f'{_html.escape(session_name)}</h1>'
-        f'<p style="margin:0 0 20px 0;color:#555;font-size:14px">'
-        f'<strong>Prepare Session</strong>&nbsp;&nbsp;·&nbsp;&nbsp;'
-        f'Team: {_html.escape(team_name)}&nbsp;|&nbsp;Status: Preparing</p>',
+        f'<p style="margin:0 0 20px 0;color:#555;font-size:15px">'
+        f'<strong style="color:#1e2a3a">Prepare Session</strong>'
+        f'&nbsp;&nbsp;·&nbsp;&nbsp;Team: {_html.escape(team_name)}&nbsp;|&nbsp;Status: Preparing</p>',
         unsafe_allow_html=True,
     )
     if start_disabled:
@@ -2474,9 +2478,9 @@ def page_run_session():
     hcol.markdown(
         f'<h1 style="margin:0 0 4px 0;color:#1e2a3a;font-size:26px;font-weight:700">'
         f'{_html.escape(session_name)}</h1>'
-        f'<p style="margin:0 0 10px 0;color:#555;font-size:14px">'
-        f'<strong>Run Session</strong>&nbsp;&nbsp;·&nbsp;&nbsp;'
-        f'Team: {_html.escape(team_name)}&nbsp;|&nbsp;Item {idx + 1} of {total}</p>'
+        f'<p style="margin:0 0 10px 0;color:#555;font-size:15px">'
+        f'<strong style="color:#1e2a3a">Run Session</strong>'
+        f'&nbsp;&nbsp;·&nbsp;&nbsp;Team: {_html.escape(team_name)}&nbsp;|&nbsp;Item {idx + 1} of {total}</p>'
         f'<div style="display:flex;gap:0;align-items:center">{dots_html}</div>',
         unsafe_allow_html=True,
     )
@@ -2620,8 +2624,8 @@ def page_summary():
     with col_h:
         st.markdown(
             f'<h1 style="margin:0 0 4px 0;color:#1e2a3a;font-size:26px;font-weight:700">Session Summary</h1>'
-            f'<p style="margin:0 0 20px 0;color:#555;font-size:14px">'
-            f'<strong>Session Summary</strong>&nbsp;&nbsp;·&nbsp;&nbsp;'
+            f'<p style="margin:0 0 20px 0;color:#555;font-size:15px">'
+            f'<strong style="color:#1e2a3a">Session Summary</strong>&nbsp;&nbsp;·&nbsp;&nbsp;'
             f'{_html.escape(session_name)}&nbsp;·&nbsp;{_html.escape(team_name)}'
             f'&nbsp;·&nbsp;{n} item{"s" if n != 1 else ""}'
             f'&nbsp;·&nbsp;<span style="background:#e8f5e9;color:#2e7d32;padding:1px 8px;'
