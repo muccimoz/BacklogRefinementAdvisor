@@ -1286,7 +1286,7 @@ def page_sessions():
     sessions = get_refinement_sessions_with_counts(team_id)
 
     today        = date_type.today()
-    default_name = f"Session — {today.strftime('%b')} {today.day} {today.year}"
+    default_name = ""
     sid          = st.session_state.get("session_id", "")
     q            = f"sid={sid}&" if sid else ""
 
@@ -1327,7 +1327,8 @@ def page_sessions():
     if st.session_state.get("show_add_session") or not sessions:
         with st.container(border=True):
             with st.form("add_session"):
-                name         = st.text_input("Session Name", value=default_name)
+                name         = st.text_input("Session Name", value=default_name,
+                                             placeholder="e.g. Sprint 24 Refinement")
                 session_date = st.date_input("Session Date", value=today,
                                              help="Optional — helps distinguish sessions when planning multiple sprints ahead.")
                 c1, c2 = st.columns([3, 1])
