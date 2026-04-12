@@ -887,7 +887,9 @@ def _render_summary_table_html(items: list) -> str:
         f'<table style="width:100%;border-collapse:collapse;background:#fff;'
         f'border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.1)">'
         f'<thead><tr>'
-        f'<th style="{th};width:28%">Backlog Item</th>'
+        f'<th style="{th};width:28%"><span class="sth-tip">Item &#9432;'
+        f'<span class="tip-text">The backlog item being assessed</span>'
+        f'</span></th>'
         f'<th style="{th}"><span class="sth-tip">Clarity &#9432;'
         f'<span class="tip-text">How clearly the item is written: High, Moderate, or Low</span>'
         f'</span></th>'
@@ -1538,26 +1540,32 @@ def page_prepare():
     for err in st.session_state.pop("csv_import_errors", []):
         st.error(f"Assessment failed: {err}")
 
-    # ── How to use expander ──────────────────────────────────────────────────
-    with st.expander("How to use this page"):
-        st.markdown(
-            "This is where you set up items before the meeting. Claude assesses each item "
-            "against the Product Backlog Refinement Checklist and returns a Clarity rating, "
-            "a Refinement rating, and a gap analysis.\n\n"
-            "- Add items manually with **+ Add Item**, or import in bulk from "
-            "**Import from Jira** or **Import from CSV**\n"
-            "- The more detail you provide (especially Acceptance Criteria), the more "
-            "specific Claude's assessment will be\n"
-            "- When all items are assessed, click **Start Session →** to lock the list "
-            "and move to the team view\n\n"
-            "**Column definitions:**\n"
-            "- **Clarity** — how clearly the item is written: High, Moderate, or Low\n"
-            "- **Refinement** — how well-scoped the item is: Too Vague, Ideal, or Over-Refined\n"
-            "- **Gaps** — number of checklist criteria Claude identified as missing\n"
-            "- **Uncertain** — number of checklist criteria Claude could not determine "
-            "from the information given\n"
-            "- **Assessed** — date Claude evaluated the item"
-        )
+    # ── How to use expander (hidden when a panel is open) ───────────────────
+    _no_panel_open = not any([
+        st.session_state.get("show_add_item"),
+        st.session_state.get("show_jira_panel"),
+        st.session_state.get("show_csv_panel"),
+    ])
+    if _no_panel_open:
+        with st.expander("How to use this page"):
+            st.markdown(
+                "This is where you set up items before the meeting. Claude assesses each item "
+                "against the Product Backlog Refinement Checklist and returns a Clarity rating, "
+                "a Refinement rating, and a gap analysis.\n\n"
+                "- Add items manually with **+ Add Item**, or import in bulk from "
+                "**Import from Jira** or **Import from CSV**\n"
+                "- The more detail you provide (especially Acceptance Criteria), the more "
+                "specific Claude's assessment will be\n"
+                "- When all items are assessed, click **Start Session →** to lock the list "
+                "and move to the team view\n\n"
+                "**Column definitions:**\n"
+                "- **Clarity** — how clearly the item is written: High, Moderate, or Low\n"
+                "- **Refinement** — how well-scoped the item is: Too Vague, Ideal, or Over-Refined\n"
+                "- **Gaps** — number of checklist criteria Claude identified as missing\n"
+                "- **Uncertain** — number of checklist criteria Claude could not determine "
+                "from the information given\n"
+                "- **Assessed** — date Claude evaluated the item"
+            )
 
     # ── Header row ────────────────────────────────────────────────────────────
     sid_param      = st.session_state.get("session_id", "")
@@ -1645,6 +1653,17 @@ def page_prepare():
     if st.session_state.get("show_add_item"):
         with st.container(border=True):
             st.subheader("Add Backlog Item")
+            with st.expander("How to use this form"):
+                st.markdown(
+                    "Fill in the fields below and click **Run Assessment** — Claude will "
+                    "evaluate the item immediately and add it to the session.\n\n"
+                    "- **Title is required**; all other fields are optional but recommended\n"
+                    "- The more detail you provide, the more specific the assessment will be\n"
+                    "- Leaving **Acceptance Criteria** blank will cause Claude to flag it "
+                    "as a checklist gap\n"
+                    "- **Dependencies** and **Assumptions** help Claude identify risks "
+                    "that might not be obvious from the title and description alone"
+                )
             st.caption("More detail in each field = more specific assessment from Claude.")
             with st.form("add_item_form"):
                 title               = st.text_input("Title *")
@@ -2325,7 +2344,9 @@ def page_prepare():
         '<div style="background:#1e2a3a;color:#fff;padding:10px 16px;'
         'font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;'
         'display:grid;grid-template-columns:5fr 2fr 2fr 1fr 2fr 2fr 1.5fr;gap:8px">'
-        '<div>Item</div>'
+        '<div><span class="th-tip">Item &#9432;'
+        '<span class="tip-text">The backlog item being assessed</span>'
+        '</span></div>'
         '<div><span class="th-tip">Clarity &#9432;'
         '<span class="tip-text">How clearly the item is written: High, Moderate, or Low</span>'
         '</span></div>'
