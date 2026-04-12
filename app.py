@@ -1177,7 +1177,69 @@ def page_teams():
         unsafe_allow_html=True,
     )
 
-    # ── Add Team form — Streamlit form only for new users with no teams ───────
+    # ── Welcome screen (first-time users with no teams) ──────────────────────
+    if not teams and not st.session_state.get("welcome_dismissed"):
+        st.markdown(
+            '<div style="text-align:center;padding:32px 0 24px">'
+            '<div style="font-size:24px;font-weight:700;color:#1e2a3a;margin-bottom:10px">'
+            'Welcome to Backlog Refinement Advisor</div>'
+            '<div style="font-size:14px;color:#555;max-width:540px;margin:0 auto;line-height:1.7">'
+            'AI-powered sprint readiness assessments for your team\'s backlog — '
+            'using Mike Cohn\'s Product Backlog Refinement Checklist and Claude.'
+            '</div></div>'
+            '<div style="display:flex;align-items:flex-start;gap:0;max-width:820px;margin:0 auto 32px">'
+
+            '<div style="flex:1;background:#fff;border:1px solid #e0e3e8;border-radius:10px;'
+            'box-shadow:0 1px 4px rgba(0,0,0,0.07);padding:24px 20px;text-align:center">'
+            '<div style="width:36px;height:36px;border-radius:50%;background:#1565C0;color:#fff;'
+            'font-size:15px;font-weight:700;display:flex;align-items:center;justify-content:center;'
+            'margin:0 auto 12px">1</div>'
+            '<div style="font-size:14px;font-weight:700;color:#1e2a3a;margin-bottom:8px">Prepare</div>'
+            '<div style="font-size:12px;color:#888;line-height:1.5">'
+            'Import items from Jira or add them manually. Claude assesses each one against '
+            '14 readiness criteria — before your meeting starts.</div></div>'
+
+            '<div style="display:flex;align-items:center;padding:0 6px;padding-top:28px;'
+            'color:#c0c8d4;font-size:22px;flex-shrink:0">›</div>'
+
+            '<div style="flex:1;background:#fff;border:1px solid #e0e3e8;border-radius:10px;'
+            'box-shadow:0 1px 4px rgba(0,0,0,0.07);padding:24px 20px;text-align:center">'
+            '<div style="width:36px;height:36px;border-radius:50%;background:#1565C0;color:#fff;'
+            'font-size:15px;font-weight:700;display:flex;align-items:center;justify-content:center;'
+            'margin:0 auto 12px">2</div>'
+            '<div style="font-size:14px;font-weight:700;color:#1e2a3a;margin-bottom:8px">Run Session</div>'
+            '<div style="font-size:12px;color:#888;line-height:1.5">'
+            'Project the screen in your refinement meeting. Review Claude\'s assessment with your '
+            'team item by item, then tag an outcome.</div></div>'
+
+            '<div style="display:flex;align-items:center;padding:0 6px;padding-top:28px;'
+            'color:#c0c8d4;font-size:22px;flex-shrink:0">›</div>'
+
+            '<div style="flex:1;background:#fff;border:1px solid #e0e3e8;border-radius:10px;'
+            'box-shadow:0 1px 4px rgba(0,0,0,0.07);padding:24px 20px;text-align:center">'
+            '<div style="width:36px;height:36px;border-radius:50%;background:#1565C0;color:#fff;'
+            'font-size:15px;font-weight:700;display:flex;align-items:center;justify-content:center;'
+            'margin:0 auto 12px">3</div>'
+            '<div style="font-size:14px;font-weight:700;color:#1e2a3a;margin-bottom:8px">Summary</div>'
+            '<div style="font-size:12px;color:#888;line-height:1.5">'
+            'See all outcomes at a glance — Ready for Sprint, Needs Work, Deferred, and more. '
+            'Export a CSV to share with stakeholders.</div></div>'
+
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        _, btn_col, _ = st.columns([3, 2, 3])
+        if btn_col.button("Get Started →", type="primary", use_container_width=True):
+            st.session_state["welcome_dismissed"] = True
+            st.rerun()
+        st.markdown(
+            '<p style="text-align:center;font-size:12px;color:#aaa;margin-top:8px">'
+            'You\'ll create your first team on the next screen.</p>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    # ── Add Team form — shown after welcome is dismissed, while no teams exist ─
     if not teams:
         with st.container(border=True):
             with st.form("add_team"):
