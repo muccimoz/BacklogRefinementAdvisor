@@ -870,16 +870,37 @@ def _render_summary_table_html(items: list) -> str:
 
     th = ('background:#1e2a3a;color:#fff;text-align:left;padding:11px 14px;'
           'font-size:12px;font-weight:600;letter-spacing:0.4px')
+    tip_css = (
+        '<style>'
+        '.sth-tip{position:relative;display:inline-block;cursor:help}'
+        '.sth-tip .tip-text{visibility:hidden;opacity:0;background:#333;color:#fff;'
+        'font-size:11px;font-weight:400;text-transform:none;letter-spacing:0;'
+        'border-radius:5px;padding:6px 10px;position:absolute;top:calc(100% + 6px);'
+        'left:50%;transform:translateX(-50%);white-space:normal;min-width:180px;'
+        'max-width:240px;line-height:1.5;z-index:9999;'
+        'box-shadow:0 2px 8px rgba(0,0,0,0.25);transition:opacity 0.15s ease;pointer-events:none}'
+        '.sth-tip:hover .tip-text{visibility:visible;opacity:1}'
+        '</style>'
+    )
     return (
+        tip_css +
         f'<table style="width:100%;border-collapse:collapse;background:#fff;'
         f'border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.1)">'
         f'<thead><tr>'
         f'<th style="{th};width:28%">Backlog Item</th>'
-        f'<th style="{th}">Clarity</th>'
-        f'<th style="{th}">Refinement</th>'
-        f'<th style="{th}">Outcome</th>'
+        f'<th style="{th}"><span class="sth-tip">Clarity &#9432;'
+        f'<span class="tip-text">How clearly the item is written: High, Moderate, or Low</span>'
+        f'</span></th>'
+        f'<th style="{th}"><span class="sth-tip">Refinement &#9432;'
+        f'<span class="tip-text">How well-scoped the item is: Too Vague, Ideal, or Over-Refined</span>'
+        f'</span></th>'
+        f'<th style="{th}"><span class="sth-tip">Outcome &#9432;'
+        f'<span class="tip-text">The team\'s decision on this item during the session</span>'
+        f'</span></th>'
         f'<th style="{th}">Notes</th>'
-        f'<th style="{th}">Assessed</th>'
+        f'<th style="{th}"><span class="sth-tip">Assessed &#9432;'
+        f'<span class="tip-text">Date Claude evaluated the item</span>'
+        f'</span></th>'
         f'</tr></thead>'
         f'<tbody>{rows}</tbody></table>'
     )
@@ -1177,6 +1198,16 @@ def page_teams():
         unsafe_allow_html=True,
     )
 
+    # ── How to use expander ──────────────────────────────────────────────────
+    with st.expander("How to use this page"):
+        st.markdown(
+            "This is your top-level workspace. Each team has its own set of refinement "
+            "sessions and assessed items — keeping history separate per group.\n\n"
+            "- Click a team card to view its sessions\n"
+            "- Use **Rename** or **Delete** from the team card for housekeeping\n"
+            "- Create a separate team for each group you facilitate refinement with"
+        )
+
     # ── Welcome screen (first-time users with no teams) ──────────────────────
     if not teams and not st.session_state.get("welcome_dismissed"):
         st.markdown(
@@ -1385,6 +1416,17 @@ def page_sessions():
         st.session_state["show_add_session"] = not st.session_state.get("show_add_session", False)
         st.rerun()
 
+    # ── How to use expander ──────────────────────────────────────────────────
+    with st.expander("How to use this page"):
+        st.markdown(
+            "Each session represents one refinement meeting. Sessions move through three states:\n\n"
+            "- **Preparing** — you are adding and assessing items before the meeting\n"
+            "- **In Progress** — the session has been started; the team is reviewing items together\n"
+            "- **Complete** — all items have been reviewed and tagged with outcomes\n\n"
+            "Open a Preparing session to add more items. "
+            "Open an In Progress or Complete session to go directly to the team view."
+        )
+
     # ── Add Session form ──────────────────────────────────────────────────────
     if st.session_state.get("show_add_session") or not sessions:
         with st.container(border=True):
@@ -1495,6 +1537,27 @@ def page_prepare():
         st.success(f"{csv_done} item(s) imported from CSV and assessed.")
     for err in st.session_state.pop("csv_import_errors", []):
         st.error(f"Assessment failed: {err}")
+
+    # ── How to use expander ──────────────────────────────────────────────────
+    with st.expander("How to use this page"):
+        st.markdown(
+            "This is where you set up items before the meeting. Claude assesses each item "
+            "against the Product Backlog Refinement Checklist and returns a Clarity rating, "
+            "a Refinement rating, and a gap analysis.\n\n"
+            "- Add items manually with **+ Add Item**, or import in bulk from "
+            "**Import from Jira** or **Import from CSV**\n"
+            "- The more detail you provide (especially Acceptance Criteria), the more "
+            "specific Claude's assessment will be\n"
+            "- When all items are assessed, click **Start Session →** to lock the list "
+            "and move to the team view\n\n"
+            "**Column definitions:**\n"
+            "- **Clarity** — how clearly the item is written: High, Moderate, or Low\n"
+            "- **Refinement** — how well-scoped the item is: Too Vague, Ideal, or Over-Refined\n"
+            "- **Gaps** — number of checklist criteria Claude identified as missing\n"
+            "- **Uncertain** — number of checklist criteria Claude could not determine "
+            "from the information given\n"
+            "- **Assessed** — date Claude evaluated the item"
+        )
 
     # ── Header row ────────────────────────────────────────────────────────────
     sid_param      = st.session_state.get("session_id", "")
@@ -1638,6 +1701,17 @@ def page_prepare():
     if st.session_state.get("show_jira_panel"):
         with st.container(border=True):
             st.subheader("Import from Jira")
+            with st.expander("How to use this panel"):
+                st.markdown(
+                    "Fetch stories directly from your Jira project using a JQL query. "
+                    "Claude will assess every issue you select on import — no manual entry needed.\n\n"
+                    "- Replace the project key in the default query with your own "
+                    "(e.g. `project = PAY`)\n"
+                    "- Add filters like sprint or issue type to narrow results\n"
+                    "- Select the issues you want to import, then click **Import & Assess Selected**\n"
+                    "- Note: Jira import brings in Title and Description only. Acceptance Criteria, "
+                    "Dependencies, and Assumptions will be blank — Claude will flag these as gaps."
+                )
             jira_issues = st.session_state.get("jira_issues")
 
             if jira_issues is None:
@@ -1802,10 +1876,16 @@ def page_prepare():
             # ── Step 1: Upload ────────────────────────────────────────────
             if _csv_step == "upload":
                 st.subheader("Import from CSV")
-                st.write(
-                    "Upload a CSV export from any tool — Jira, Linear, Azure DevOps, or a "
-                    "spreadsheet. The app will detect your column names and map them automatically."
-                )
+                with st.expander("How to use this step"):
+                    st.markdown(
+                        "Upload a CSV export from any tool — Jira, Linear, Azure DevOps, "
+                        "or a spreadsheet. The app will attempt to detect your column names "
+                        "automatically.\n\n"
+                        "- If you are starting from scratch, download the **CSV Template** "
+                        "— it uses the exact column headers the app expects, so the mapping "
+                        "step is skipped entirely\n"
+                        "- CSV files only; maximum 5MB"
+                    )
 
                 _uploaded_file = st.file_uploader(
                     "Choose a CSV file",
@@ -1911,6 +1991,15 @@ def page_prepare():
                 _m_rows     = st.session_state.get("csv_rows", [])
 
                 st.subheader("Map Columns")
+                with st.expander("How to use this step"):
+                    st.markdown(
+                        "Match your CSV column headers to the app's six fields. "
+                        "Auto-detection handles common names — review and correct any that look wrong.\n\n"
+                        "- **Title is required** — import cannot proceed without it\n"
+                        "- Fields marked \"Not detected\" will be blank on import; "
+                        "Claude will flag missing Acceptance Criteria as a checklist gap\n"
+                        "- You can edit items individually after import to fill in any blanks"
+                    )
                 st.caption(
                     f"File: **{_m_filename}** · {len(_m_rows)} rows detected. "
                     "We've matched your columns automatically — review and correct any mismatches."
@@ -2018,6 +2107,14 @@ def page_prepare():
                     return row.get(col, "").strip() if col else ""
 
                 st.subheader("Review & Select")
+                with st.expander("How to use this step"):
+                    st.markdown(
+                        "Choose which rows from your CSV to import. All selected items will "
+                        "be assessed by Claude on import.\n\n"
+                        "- Use **Select All** or **Clear** to manage selections quickly\n"
+                        "- Items with blank Acceptance Criteria are flagged but still importable\n"
+                        "- Deselect any rows you do not want to bring in"
+                    )
                 st.caption(
                     f"File: **{_r_filename}** · {len(_r_rows)} rows. "
                     "Select the items to import — all selected items will be assessed by Claude."
@@ -2200,7 +2297,19 @@ def page_prepare():
         return
 
     st.markdown(
-        '<style>.item-row:hover { background:#f8f9fb !important; }</style>',
+        '<style>'
+        '.item-row:hover { background:#f8f9fb !important; }'
+        '.th-tip { position:relative; display:inline-block; cursor:help; }'
+        '.th-tip .tip-text {'
+        '  visibility:hidden; opacity:0; background:#333; color:#fff;'
+        '  font-size:11px; font-weight:400; text-transform:none; letter-spacing:0;'
+        '  border-radius:5px; padding:6px 10px; position:absolute;'
+        '  top:calc(100% + 6px); left:50%; transform:translateX(-50%);'
+        '  white-space:normal; min-width:180px; max-width:240px; line-height:1.5;'
+        '  z-index:9999; box-shadow:0 2px 8px rgba(0,0,0,0.25);'
+        '  transition:opacity 0.15s ease; pointer-events:none; }'
+        '.th-tip:hover .tip-text { visibility:visible; opacity:1; }'
+        '</style>',
         unsafe_allow_html=True,
     )
 
@@ -2216,8 +2325,23 @@ def page_prepare():
         '<div style="background:#1e2a3a;color:#fff;padding:10px 16px;'
         'font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;'
         'display:grid;grid-template-columns:5fr 2fr 2fr 1fr 2fr 2fr 1.5fr;gap:8px">'
-        '<div>Item</div><div>Clarity</div><div>Refinement</div>'
-        '<div>Gaps</div><div>Uncertain</div><div>Assessed</div><div></div>'
+        '<div>Item</div>'
+        '<div><span class="th-tip">Clarity &#9432;'
+        '<span class="tip-text">How clearly the item is written: High, Moderate, or Low</span>'
+        '</span></div>'
+        '<div><span class="th-tip">Refinement &#9432;'
+        '<span class="tip-text">How well-scoped the item is: Too Vague, Ideal, or Over-Refined</span>'
+        '</span></div>'
+        '<div><span class="th-tip">Gaps &#9432;'
+        '<span class="tip-text">Number of checklist criteria Claude identified as missing</span>'
+        '</span></div>'
+        '<div><span class="th-tip">Uncertain &#9432;'
+        '<span class="tip-text">Number of checklist criteria Claude could not determine from the information given</span>'
+        '</span></div>'
+        '<div><span class="th-tip">Assessed &#9432;'
+        '<span class="tip-text">Date Claude evaluated the item</span>'
+        '</span></div>'
+        '<div></div>'
         '</div>'
     )
 
@@ -2278,6 +2402,24 @@ def page_run_session():
 
     if st.session_state.pop("outcome_saved", None):
         st.success("Outcome saved.")
+
+    # ── How to use expander ──────────────────────────────────────────────────
+    with st.expander("How to use this page"):
+        st.markdown(
+            "This is the team meeting view — one item at a time, designed for screen sharing "
+            "or projector display. Items were assessed by Claude before the meeting; this page "
+            "is where the team discusses results and records decisions.\n\n"
+            "- Use **Prev** and **Next** to move between items\n"
+            "- The progress dots at the top show which items have been tagged\n"
+            "- Tag each item with an outcome and add optional notes\n"
+            "- You can revisit any item to change its outcome during the session\n\n"
+            "**Outcome tags:**\n"
+            "- **Ready for Sprint** — item is well-defined and can be pulled in\n"
+            "- **Needs More Refinement** — gaps identified; needs further work before it is sprint-ready\n"
+            "- **Return to Product Owner** — item needs clarification or rework from the PO\n"
+            "- **Defer** — not a priority for the current sprint\n"
+            "- **Split Required** — item is too large or complex and should be broken down"
+        )
 
     # ── Page header ───────────────────────────────────────────────────────────
     sid = st.session_state.get("session_id", "")
@@ -2465,6 +2607,15 @@ def page_summary():
             file_name=f"{session_name} Summary.csv",
             mime="text/csv",
             use_container_width=True,
+        )
+
+    # ── How to use expander ──────────────────────────────────────────────────
+    with st.expander("How to use this page"):
+        st.markdown(
+            "An overview of all outcomes from this session.\n\n"
+            "- The outcome count bar at the top shows the breakdown at a glance\n"
+            "- Use **Export CSV** to download the full results for sharing or record-keeping\n"
+            "- Use **Reopen Session** if you need to go back and change any outcomes"
         )
 
     # ── Outcome count bar ─────────────────────────────────────────────────────
