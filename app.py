@@ -1490,6 +1490,11 @@ def page_prepare():
         st.success(f"{jira_done} item(s) imported from Jira and assessed.")
     for err in st.session_state.pop("jira_import_errors", []):
         st.error(f"Assessment failed: {err}")
+    csv_done = st.session_state.pop("csv_import_done", 0)
+    if csv_done:
+        st.success(f"{csv_done} item(s) imported from CSV and assessed.")
+    for err in st.session_state.pop("csv_import_errors", []):
+        st.error(f"Assessment failed: {err}")
 
     # ── Header row ────────────────────────────────────────────────────────────
     sid_param      = st.session_state.get("session_id", "")
@@ -1537,11 +1542,12 @@ def page_prepare():
     # ── Toolbar ───────────────────────────────────────────────────────────────
     show_add  = st.session_state.get("show_add_item",  False)
     show_jira = st.session_state.get("show_jira_panel", False)
+    show_csv  = st.session_state.get("show_csv_panel",  False)
 
     n_items     = len(items)
     count_label = f'{n_items} item{"s" if n_items != 1 else ""}'
 
-    if not show_add and not show_jira:
+    if not show_add and not show_jira and not show_csv:
         _btn_base = (
             'text-decoration:none;display:inline-block;border-radius:6px;'
             'padding:8px 16px;font-size:13px;font-weight:600;white-space:nowrap'
@@ -1549,6 +1555,7 @@ def page_prepare():
         _btn_sec  = f'{_btn_base};background:#fff;color:#1e2a3a;border:1px solid #d0d4db'
         add_href  = f'?{q}_prep_action=toggle_add'
         jira_href = f'?{q}_prep_action=toggle_jira'
+        csv_href  = f'?{q}_prep_action=toggle_csv'
 
         st.markdown(
             f'<div style="display:flex;align-items:center;justify-content:space-between;'
@@ -1558,7 +1565,27 @@ def page_prepare():
             f'Assessed Items&nbsp;·&nbsp;{count_label}</div>'
             f'<div style="display:flex;gap:8px">'
             f'<a href="{add_href}" target="_self" style="{_btn_sec}">+ Add Item</a>'
-            f'<a href="{jira_href}" target="_self" style="{_btn_sec}">Import from Jira</a>'
+            f'<div style="position:relative;display:inline-block">'
+            f'<button onclick="var d=document.getElementById(\'imp-dd\');'
+            f'd.style.display=d.style.display===\'block\'?\'none\':\'block\'"'
+            f' style="{_btn_base};background:#fff;color:#1e2a3a;border:1px solid #d0d4db;'
+            f'cursor:pointer;font-family:inherit">&#8595; Import</button>'
+            f'<div id="imp-dd" style="display:none;position:absolute;right:0;top:calc(100% + 4px);'
+            f'background:#fff;border:1px solid #d0d4db;border-radius:6px;'
+            f'box-shadow:0 4px 12px rgba(0,0,0,0.12);z-index:9000;min-width:160px;overflow:hidden">'
+            f'<a href="{jira_href}" target="_self"'
+            f' style="display:block;padding:10px 16px;font-size:13px;font-weight:500;'
+            f'color:#1e2a3a;text-decoration:none;white-space:nowrap"'
+            f' onmouseover="this.style.background=\'#f5f7fa\'"'
+            f' onmouseout="this.style.background=\'\'">From Jira</a>'
+            f'<a href="{csv_href}" target="_self"'
+            f' style="display:block;padding:10px 16px;font-size:13px;font-weight:500;'
+            f'color:#1e2a3a;text-decoration:none;white-space:nowrap;'
+            f'border-top:1px solid #eef0f3"'
+            f' onmouseover="this.style.background=\'#f5f7fa\'"'
+            f' onmouseout="this.style.background=\'\'">From CSV</a>'
+            f'</div>'
+            f'</div>'
             f'</div></div>',
             unsafe_allow_html=True,
         )
@@ -1747,11 +1774,413 @@ def page_prepare():
                     st.session_state["show_jira_panel"] = False
                     st.rerun()
 
+    # ── CSV import panel ──────────────────────────────────────────────────────
+    if st.session_state.get("show_csv_panel"):
+        _csv_step = st.session_state.get("csv_import_step", "upload")
+
+        with st.container(border=True):
+            # ── Step indicator ────────────────────────────────────────────
+            _step_labels = ["Upload", "Map Columns", "Review & Select"]
+            _step_keys   = ["upload", "mapping", "review"]
+            _cur_idx     = (_step_keys.index(_csv_step)
+                            if _csv_step in _step_keys else 0)
+            _si = '<div style="display:flex;align-items:flex-start;gap:0;margin-bottom:20px">'
+            for _i, _slbl in enumerate(_step_labels):
+                _snum = str(_i + 1)
+                if _i < _cur_idx:
+                    _sc = ('<div style="width:28px;height:28px;border-radius:50%;'
+                           'background:#27ae60;color:#fff;display:flex;align-items:center;'
+                           'justify-content:center;font-size:12px;font-weight:700">&#10003;</div>')
+                    _stc = "#27ae60"
+                elif _i == _cur_idx:
+                    _sc = (f'<div style="width:28px;height:28px;border-radius:50%;'
+                           f'background:#1565C0;color:#fff;display:flex;align-items:center;'
+                           f'justify-content:center;font-size:12px;font-weight:700">{_snum}</div>')
+                    _stc = "#1565C0"
+                else:
+                    _sc = (f'<div style="width:28px;height:28px;border-radius:50%;'
+                           f'background:#e8eaed;color:#999;display:flex;align-items:center;'
+                           f'justify-content:center;font-size:12px;font-weight:700">{_snum}</div>')
+                    _stc = "#999"
+                _si += (f'<div style="display:flex;flex-direction:column;align-items:center;gap:4px">'
+                        f'{_sc}'
+                        f'<div style="font-size:11px;color:{_stc};font-weight:600;'
+                        f'white-space:nowrap">{_slbl}</div></div>')
+                if _i < len(_step_labels) - 1:
+                    _sep_c = "#27ae60" if _i < _cur_idx else "#e8eaed"
+                    _si += (f'<div style="flex:1;height:2px;background:{_sep_c};'
+                            f'margin-top:14px;min-width:24px"></div>')
+            _si += '</div>'
+            st.markdown(_si, unsafe_allow_html=True)
+
+            # ── Step 1: Upload ────────────────────────────────────────────
+            if _csv_step == "upload":
+                st.subheader("Import from CSV")
+                st.write(
+                    "Upload a CSV export from any tool — Jira, Linear, Azure DevOps, or a "
+                    "spreadsheet. The app will detect your column names and map them automatically."
+                )
+
+                _uploaded_file = st.file_uploader(
+                    "Choose a CSV file",
+                    type=["csv"],
+                    key="csv_file_uploader",
+                    label_visibility="collapsed",
+                )
+
+                _tmpl_csv = ("Title,Description,Acceptance Criteria,"
+                             "Dependencies,Assumptions,Notes\n")
+                st.markdown(
+                    '<div style="background:#f0f4ff;border:1px solid #90CAF9;border-radius:8px;'
+                    'padding:14px 18px;display:flex;align-items:center;gap:16px;margin:14px 0 4px 0">'
+                    '<div style="font-size:22px">&#128203;</div>'
+                    '<div style="flex:1">'
+                    '<div style="font-size:13px;font-weight:700;color:#1565C0;margin-bottom:2px">'
+                    'Starting from scratch?</div>'
+                    '<div style="font-size:12px;color:#555;line-height:1.4">'
+                    'Download our CSV template — pre-formatted with the exact column headers the app '
+                    'expects. Fill it in and upload it straight back. No mapping step needed.</div>'
+                    '</div>'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+                st.download_button(
+                    "↓ Download Template",
+                    data=_tmpl_csv,
+                    file_name="backlog_template.csv",
+                    mime="text/csv",
+                    key="btn_csv_tmpl_dl",
+                )
+
+                st.write("")
+                _u_next_col, _u_cancel_col, _ = st.columns([3, 2, 5])
+                _u_proceed = _u_next_col.button(
+                    "Next: Map Columns →",
+                    type="primary",
+                    disabled=(_uploaded_file is None),
+                    key="btn_csv_next_upload",
+                    use_container_width=True,
+                )
+                _u_cancel = _u_cancel_col.button(
+                    "Cancel",
+                    key="btn_csv_cancel_upload",
+                    use_container_width=True,
+                )
+
+                if _u_cancel:
+                    for _k in ("csv_import_step", "csv_headers", "csv_rows",
+                               "csv_mapping", "csv_filename"):
+                        st.session_state.pop(_k, None)
+                    st.session_state["show_csv_panel"] = False
+                    st.rerun()
+
+                if _u_proceed and _uploaded_file is not None:
+                    _content = _uploaded_file.read().decode("utf-8-sig")
+                    _reader  = csv.DictReader(io.StringIO(_content))
+                    _headers = list(_reader.fieldnames or [])
+                    _rows    = list(_reader)
+
+                    _synonyms = {
+                        "Title":               {"title", "summary", "name", "story"},
+                        "Description":         {"description", "desc", "details", "body"},
+                        "Acceptance Criteria": {"acceptance criteria", "acceptance_criteria",
+                                               "ac", "definition of done", "dod"},
+                        "Dependencies":        {"dependencies", "dependency", "depends on",
+                                               "depends_on", "blocked by", "blocked_by",
+                                               "blockers"},
+                        "Assumptions":         {"assumptions", "assumption"},
+                        "Notes":               {"notes", "note", "comments", "comment",
+                                               "additional"},
+                    }
+                    _hdr_lc = {h.lower().strip(): h for h in _headers}
+                    _auto_map = {}
+                    for _fld, _syns in _synonyms.items():
+                        _auto_map[_fld] = None
+                        for _syn in _syns:
+                            if _syn in _hdr_lc:
+                                _auto_map[_fld] = _hdr_lc[_syn]
+                                break
+
+                    st.session_state["csv_headers"]  = _headers
+                    st.session_state["csv_rows"]     = _rows
+                    st.session_state["csv_filename"] = _uploaded_file.name
+                    st.session_state["csv_mapping"]  = _auto_map
+                    for _fld in ("Title", "Description", "Acceptance Criteria",
+                                 "Dependencies", "Assumptions", "Notes"):
+                        st.session_state.pop(f"csv_map_{_fld}", None)
+
+                    _tmpl_cols = {"title", "description", "acceptance criteria",
+                                  "dependencies", "assumptions", "notes"}
+                    if _tmpl_cols <= {h.lower().strip() for h in _headers}:
+                        st.session_state["csv_import_step"] = "review"
+                    else:
+                        st.session_state["csv_import_step"] = "mapping"
+                    st.rerun()
+
+            # ── Step 2: Column Mapping ────────────────────────────────────
+            elif _csv_step == "mapping":
+                _m_headers  = st.session_state.get("csv_headers", [])
+                _m_auto_map = st.session_state.get("csv_mapping", {})
+                _m_filename = st.session_state.get("csv_filename", "your file")
+                _m_rows     = st.session_state.get("csv_rows", [])
+
+                st.subheader("Map Columns")
+                st.caption(
+                    f"File: **{_m_filename}** · {len(_m_rows)} rows detected. "
+                    "We've matched your columns automatically — review and correct any mismatches."
+                )
+
+                _m_opts = ["— Not in this file —"] + _m_headers
+                _app_fields_req = {
+                    "Title": True, "Description": False,
+                    "Acceptance Criteria": False, "Dependencies": False,
+                    "Assumptions": False, "Notes": False,
+                }
+                _final_map = {}
+                for _fld, _req in _app_fields_req.items():
+                    _auto_col = _m_auto_map.get(_fld)
+                    _def_idx  = (_m_opts.index(_auto_col)
+                                 if _auto_col and _auto_col in _m_opts else 0)
+                    _req_star = ("&nbsp;<span style='color:#e74c3c;font-size:11px'>*required</span>"
+                                 if _req else "")
+                    st.markdown(
+                        f'<div style="font-size:13px;font-weight:600;margin-bottom:4px">'
+                        f'{_html.escape(_fld)}{_req_star}</div>',
+                        unsafe_allow_html=True,
+                    )
+                    _sel_col2, _stat_col2 = st.columns([3, 1])
+                    _sel2 = _sel_col2.selectbox(
+                        _fld,
+                        options=_m_opts,
+                        index=_def_idx,
+                        key=f"csv_map_{_fld}",
+                        label_visibility="collapsed",
+                    )
+                    if _sel2 == "— Not in this file —":
+                        _stat_col2.markdown(
+                            '<div style="color:#e67e22;font-size:12px;font-weight:600;'
+                            'padding-top:8px">&#9888; Not detected</div>',
+                            unsafe_allow_html=True,
+                        )
+                        _final_map[_fld] = None
+                    else:
+                        if _auto_col and _sel2 == _auto_col:
+                            _stat_col2.markdown(
+                                '<div style="color:#27ae60;font-size:12px;font-weight:600;'
+                                'padding-top:8px">&#10003; Auto-detected</div>',
+                                unsafe_allow_html=True,
+                            )
+                        else:
+                            _stat_col2.markdown(
+                                '<div style="color:#2980b9;font-size:12px;font-weight:600;'
+                                'padding-top:8px">&#10003; Mapped</div>',
+                                unsafe_allow_html=True,
+                            )
+                        _final_map[_fld] = _sel2
+
+                _n_mapped2  = sum(1 for v in _final_map.values() if v)
+                _blank_flds = [f for f, v in _final_map.items() if not v and f != "Title"]
+                if _blank_flds:
+                    st.markdown(
+                        f'<div style="background:#f0f4ff;border-radius:8px;padding:12px 16px;'
+                        f'margin:12px 0;font-size:13px;color:#555;line-height:1.5">'
+                        f'<strong style="color:#1565C0">{_n_mapped2} of 6 fields mapped.</strong> '
+                        f'{_html.escape(", ".join(_blank_flds))} will be blank — Claude will flag '
+                        f'{"these" if len(_blank_flds) > 1 else "this"} as checklist gaps.</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                st.write("")
+                _m_cont_col, _m_back_col, _, _m_cancel_col = st.columns([3, 2, 3, 2])
+                _m_proceed = _m_cont_col.button(
+                    "Continue →",
+                    type="primary",
+                    disabled=(_final_map.get("Title") is None),
+                    key="btn_csv_next_mapping",
+                    use_container_width=True,
+                )
+                _m_back = _m_back_col.button(
+                    "← Back", key="btn_csv_back_mapping", use_container_width=True,
+                )
+                _m_cancel = _m_cancel_col.button(
+                    "Cancel", key="btn_csv_cancel_mapping", use_container_width=True,
+                )
+
+                if _m_back:
+                    st.session_state["csv_import_step"] = "upload"
+                    st.rerun()
+                if _m_cancel:
+                    for _k in ("csv_import_step", "csv_headers", "csv_rows",
+                               "csv_mapping", "csv_filename"):
+                        st.session_state.pop(_k, None)
+                    st.session_state["show_csv_panel"] = False
+                    st.rerun()
+                if _m_proceed:
+                    st.session_state["csv_mapping"]     = _final_map
+                    st.session_state["csv_import_step"] = "review"
+                    st.rerun()
+
+            # ── Step 3: Review & Select ───────────────────────────────────
+            elif _csv_step == "review":
+                _r_headers  = st.session_state.get("csv_headers", [])
+                _r_rows     = st.session_state.get("csv_rows", [])
+                _r_mapping  = st.session_state.get("csv_mapping", {})
+                _r_filename = st.session_state.get("csv_filename", "your file")
+
+                def _csv_val(row, field):
+                    col = _r_mapping.get(field)
+                    return row.get(col, "").strip() if col else ""
+
+                st.subheader("Review & Select")
+                st.caption(
+                    f"File: **{_r_filename}** · {len(_r_rows)} rows. "
+                    "Select the items to import — all selected items will be assessed by Claude."
+                )
+
+                _rsa_col, _rca_col, _ = st.columns([2, 2, 8])
+                if _rsa_col.button("Select All", key="btn_csv_sel_all"):
+                    for _ri in range(len(_r_rows)):
+                        st.session_state[f"csv_cb_{_ri}"] = True
+                    st.rerun()
+                if _rca_col.button("Clear", key="btn_csv_clear_all"):
+                    for _ri in range(len(_r_rows)):
+                        st.session_state[f"csv_cb_{_ri}"] = False
+                    st.rerun()
+
+                st.write("")
+                _ac_blank_count = 0
+                for _ri, _rrow in enumerate(_r_rows):
+                    _r_title = _csv_val(_rrow, "Title")
+                    _r_desc  = _csv_val(_rrow, "Description")
+                    _r_ac    = _csv_val(_rrow, "Acceptance Criteria")
+                    _r_dep   = _csv_val(_rrow, "Dependencies")
+                    _rcb_col, _rtitle_col, _rdesc_col, _rac_col, _rdep_col = st.columns(
+                        [1, 5, 5, 2, 2]
+                    )
+                    _rcb_col.checkbox("", key=f"csv_cb_{_ri}", value=True)
+                    _rtitle_col.markdown(
+                        f"**{_html.escape(_r_title) if _r_title else '(no title)'}**"
+                    )
+                    _rdesc_col.caption(
+                        _r_desc[:80] + "…" if len(_r_desc) > 80 else _r_desc or "—"
+                    )
+                    if not _r_ac:
+                        _ac_blank_count += 1
+                        _rac_col.markdown(
+                            '<span style="background:#fff3e0;color:#e65100;'
+                            'border:1px solid #ffcc80;border-radius:12px;'
+                            'padding:2px 8px;font-size:11px;font-weight:600">Blank</span>',
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        _rac_col.caption(
+                            _r_ac[:30] + "…" if len(_r_ac) > 30 else _r_ac
+                        )
+                    _rdep_col.caption(
+                        _r_dep[:30] + "…" if len(_r_dep) > 30 else _r_dep or "—"
+                    )
+
+                if _ac_blank_count > 0:
+                    _plural = "s" if _ac_blank_count != 1 else ""
+                    st.markdown(
+                        f'<div style="background:#fff3e0;border-left:4px solid #f9a825;'
+                        f'padding:12px 16px;border-radius:0 6px 6px 0;font-size:13px;'
+                        f'color:#555;margin-top:8px;line-height:1.5">'
+                        f'<strong style="color:#e65100">Acceptance Criteria is blank for '
+                        f'{_ac_blank_count} item{_plural}.</strong> Claude will flag this as a '
+                        f'checklist gap. You can edit items individually after import to add AC.'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                _sel_indices = [
+                    _ri for _ri in range(len(_r_rows))
+                    if st.session_state.get(f"csv_cb_{_ri}", True)
+                ]
+                _n_sel2 = len(_sel_indices)
+
+                st.write("")
+                _ri_col, _rb_col, _, _rc_col = st.columns([4, 2, 3, 2])
+                _do_import = _ri_col.button(
+                    f"Assess & Import {_n_sel2} Item{'s' if _n_sel2 != 1 else ''}",
+                    type="primary",
+                    disabled=(_n_sel2 == 0),
+                    key="btn_csv_import",
+                    use_container_width=True,
+                )
+                _r_back = _rb_col.button(
+                    "← Back", key="btn_csv_back_review", use_container_width=True,
+                )
+                _r_cancel = _rc_col.button(
+                    "Cancel", key="btn_csv_cancel_review", use_container_width=True,
+                )
+
+                if _r_back:
+                    _tmpl_cols2 = {"title", "description", "acceptance criteria",
+                                   "dependencies", "assumptions", "notes"}
+                    if _tmpl_cols2 <= {h.lower().strip() for h in _r_headers}:
+                        st.session_state["csv_import_step"] = "upload"
+                    else:
+                        st.session_state["csv_import_step"] = "mapping"
+                    st.rerun()
+
+                if _r_cancel:
+                    for _k in ("csv_import_step", "csv_headers", "csv_rows",
+                               "csv_mapping", "csv_filename"):
+                        st.session_state.pop(_k, None)
+                    for _ri in range(len(_r_rows)):
+                        st.session_state.pop(f"csv_cb_{_ri}", None)
+                    st.session_state["show_csv_panel"] = False
+                    st.rerun()
+
+                if _do_import and _n_sel2 > 0:
+                    _sel_rows = [_r_rows[_ri] for _ri in _sel_indices]
+                    _imp_prog = st.progress(0)
+                    _imp_stat = st.empty()
+                    _imp_errs = []
+
+                    for _n, _irow in enumerate(_sel_rows):
+                        _i_title = _csv_val(_irow, "Title")
+                        _i_desc  = _csv_val(_irow, "Description")
+                        _i_ac    = _csv_val(_irow, "Acceptance Criteria")
+                        _i_deps  = _csv_val(_irow, "Dependencies")
+                        _i_assm  = _csv_val(_irow, "Assumptions")
+                        _i_nts   = _csv_val(_irow, "Notes")
+
+                        _imp_stat.text(
+                            f"Assessing {_n + 1} of {len(_sel_rows)}: {_i_title[:60]}..."
+                        )
+                        _imp_prog.progress((_n + 1) / len(_sel_rows))
+
+                        try:
+                            _i_clarity, _i_zone, _i_output = run_claude_evaluation(
+                                _i_title, _i_desc, _i_ac, _i_deps, _i_assm, _i_nts,
+                            )
+                            create_backlog_item(
+                                session_id, _i_title, _i_desc,
+                                _i_ac, _i_deps, _i_assm, _i_nts,
+                                _i_clarity, _i_zone, _i_output,
+                            )
+                        except Exception as _ie:
+                            _imp_errs.append(f"{_i_title[:40]}: {_ie}")
+
+                    _n_done2 = len(_sel_rows) - len(_imp_errs)
+                    for _k in ("csv_import_step", "csv_headers", "csv_rows",
+                               "csv_mapping", "csv_filename"):
+                        st.session_state.pop(_k, None)
+                    for _ri in range(len(_r_rows)):
+                        st.session_state.pop(f"csv_cb_{_ri}", None)
+                    st.session_state["show_csv_panel"]   = False
+                    st.session_state["csv_import_done"]  = _n_done2
+                    if _imp_errs:
+                        st.session_state["csv_import_errors"] = _imp_errs
+                    st.rerun()
+
     # ── Items table — pure HTML ───────────────────────────────────────────────
     if not items:
         st.markdown(
             '<p style="color:#aaa;margin-top:16px">No items yet. '
-            'Use "+ Add Item" or "Import from Jira" to add and assess backlog items.</p>',
+            'Use "+ Add Item" or "&#8595; Import" to add and assess backlog items.</p>',
             unsafe_allow_html=True,
         )
         return
@@ -2169,23 +2598,32 @@ def show_topnav():
 
     # ── Handle prepare-page toolbar toggles ──────────────────────────────────
     prep_action = st.query_params.get("_prep_action", "")
-    if prep_action in ("toggle_add", "toggle_jira"):
+    if prep_action in ("toggle_add", "toggle_jira", "toggle_csv"):
         try:
             del st.query_params["_prep_action"]
         except Exception:
             pass
         if prep_action == "toggle_add":
             new_val = not st.session_state.get("show_add_item", False)
-            st.session_state["show_add_item"] = new_val
+            st.session_state["show_add_item"]   = new_val
             if new_val:
                 st.session_state["show_jira_panel"] = False
+                st.session_state["show_csv_panel"]  = False
                 st.session_state.pop("jira_issues", None)
         elif prep_action == "toggle_jira":
             new_val = not st.session_state.get("show_jira_panel", False)
             st.session_state["show_jira_panel"] = new_val
             if new_val:
-                st.session_state["show_add_item"] = False
+                st.session_state["show_add_item"]  = False
+                st.session_state["show_csv_panel"] = False
             if not new_val:
+                st.session_state.pop("jira_issues", None)
+        elif prep_action == "toggle_csv":
+            new_val = not st.session_state.get("show_csv_panel", False)
+            st.session_state["show_csv_panel"]  = new_val
+            if new_val:
+                st.session_state["show_add_item"]   = False
+                st.session_state["show_jira_panel"] = False
                 st.session_state.pop("jira_issues", None)
         st.rerun()
         return
