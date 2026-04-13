@@ -2462,11 +2462,18 @@ def page_run_session():
     for i, it in enumerate(all_items):
         color = outcome_color_map.get(it.get("outcome", ""), "#bdc3c7")
         if i == idx:
-            dot_style = (
-                f"width:14px;height:14px;border-radius:50%;background:#fff;"
-                f"border:3px solid #2c3e50;box-shadow:0 0 0 1px #2c3e50;"
-                f"display:inline-block"
-            )
+            if it.get("outcome"):
+                dot_style = (
+                    f"width:14px;height:14px;border-radius:50%;background:{color};"
+                    f"border:3px solid #2c3e50;box-shadow:0 0 0 1px #2c3e50;"
+                    f"display:inline-block"
+                )
+            else:
+                dot_style = (
+                    f"width:14px;height:14px;border-radius:50%;background:#fff;"
+                    f"border:3px solid #2c3e50;box-shadow:0 0 0 1px #2c3e50;"
+                    f"display:inline-block"
+                )
         else:
             dot_style = (
                 f"width:14px;height:14px;border-radius:50%;background:{color};"
@@ -2566,7 +2573,8 @@ def page_run_session():
         selected = (current_outcome == label)
         href     = (f"?{q}_run_action=set_outcome"
                     f"&item_id={item_id_s}"
-                    f"&outcome={_url_quote(label, safe='')}")
+                    f"&outcome={_url_quote(label, safe='')}"
+                    f"&run_idx={idx}")
         if selected:
             style = (f"text-decoration:none;display:inline-block;flex:1;text-align:center;"
                      f"border:2px solid {color};border-radius:20px;padding:7px 14px;"
@@ -2803,7 +2811,8 @@ def show_topnav():
     run_item_id = st.query_params.get("item_id",     "")
     run_outcome = st.query_params.get("outcome",     "")
     if run_action in ("set_outcome",):
-        for k in ("_run_action", "item_id", "outcome"):
+        run_idx = st.query_params.get("run_idx", "0")
+        for k in ("_run_action", "item_id", "outcome", "run_idx"):
             try:
                 del st.query_params[k]
             except Exception:
@@ -2811,6 +2820,7 @@ def show_topnav():
         if run_item_id and run_outcome:
             notes = st.session_state.get(f"notes_{run_item_id}", "")
             update_backlog_item_outcome(run_item_id, run_outcome, notes)
+            st.session_state["run_item_index"] = int(run_idx)
             st.session_state["outcome_saved"] = True
         st.rerun()
         return
