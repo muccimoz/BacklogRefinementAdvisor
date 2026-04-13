@@ -1443,7 +1443,7 @@ def page_sessions():
                 name         = st.text_input("Session Name", value=default_name,
                                              placeholder="e.g. Sprint 24 Refinement")
                 session_date = st.date_input("Session Date", value=today,
-                                             help="Optional — helps distinguish sessions when planning multiple sprints ahead.")
+                                             help="Helps distinguish sessions when planning multiple sprints ahead.")
                 c1, c2 = st.columns([3, 1])
                 submitted = c1.form_submit_button("Add Session", type="primary",
                                                   use_container_width=True)
