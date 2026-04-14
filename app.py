@@ -1512,7 +1512,7 @@ def page_sessions():
             f'padding:13px 16px;{border};align-items:center;font-size:13px">'
             f'<div style="font-weight:700;color:#1e2a3a">{sname}</div>'
             f'<div>{_status_badge(status)}</div>'
-            f'<div style="color:#555">{tagged}/{total}</div>'
+            f'<div style="color:#555">{"" if total == 0 else (f"{tagged}/{total}" if status == "in_progress" else str(total))}</div>'
             f'<div style="color:#aaa;font-size:12px">{date_str}</div>'
             f'<div><a href="{open_href}" target="_self" style="{btn_open}">Open</a></div>'
             f'<div><a href="{rename_href}" target="_self" style="{btn_sec}">Rename</a></div>'
@@ -1694,10 +1694,10 @@ def page_prepare():
                     'Claude will flag missing acceptance criteria as a checklist gap.</p>',
                     unsafe_allow_html=True,
                 )
-                dependencies        = st.text_input("Dependencies",
+                dependencies        = st.text_area("Dependencies", height=100,
                                                    placeholder="Other items or systems this relies on")
                 st.caption("Any teams, services, or stories this item relies on. If blank, Claude assumes none.")
-                assumptions         = st.text_input("Assumptions",
+                assumptions         = st.text_area("Assumptions", height=100,
                                                    placeholder="What the team is taking as given")
                 st.caption("Unstated assumptions are a common sprint surprise. List them here so Claude can flag risks.")
                 notes               = st.text_area("Notes", height=80,
@@ -2544,7 +2544,7 @@ def page_run_session():
             '<hr style="border:none;border-top:1px solid #dde1e7;margin:16px 0">',
             unsafe_allow_html=True,
         )
-        with st.expander("View full checklist detail"):
+        with st.expander("View full assessment details"):
             groups = _split_checklist_groups(sections["checklist"])
             if len(groups) >= 2:
                 left_col, right_col = st.columns(2)
