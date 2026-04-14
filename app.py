@@ -2605,6 +2605,8 @@ def page_run_session():
         placeholder="Note: optional facilitator note",
     )
     if prev_col.button("← Prev", disabled=(idx == 0), use_container_width=True):
+        notes = st.session_state.get(f"notes_{item['id']}", "")
+        update_backlog_item_outcome(item["id"], current_outcome, notes)
         st.session_state["run_item_index"] = idx - 1
         st.rerun()
     ctr_col.markdown(
@@ -2614,6 +2616,8 @@ def page_run_session():
     )
     if next_col.button("Next →", disabled=(idx == total - 1),
                        use_container_width=True, type="primary"):
+        notes = st.session_state.get(f"notes_{item['id']}", "")
+        update_backlog_item_outcome(item["id"], current_outcome, notes)
         st.session_state["run_item_index"] = idx + 1
         st.rerun()
 
