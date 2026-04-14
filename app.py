@@ -2460,9 +2460,15 @@ def page_run_session():
             st.rerun()
         return
 
-    total = len(all_items)
-    idx   = st.session_state.get("run_item_index", 0)
-    idx   = max(0, min(idx, total - 1))
+    total     = len(all_items)
+    stored    = st.session_state.get("run_item_index", None)
+    if stored is None:
+        untagged = [i for i, it in enumerate(all_items) if not it.get("outcome")]
+        idx = untagged[0] if untagged else 0
+        st.session_state["run_item_index"] = idx
+    else:
+        idx = stored
+    idx = max(0, min(idx, total - 1))
     item  = all_items[idx]
 
     if st.session_state.pop("outcome_saved", None):
@@ -2512,7 +2518,13 @@ def page_run_session():
                 f"width:14px;height:14px;border-radius:50%;background:{color};"
                 f"border:3px solid {color};display:inline-block"
             )
-        dots_html += f'<span style="{dot_style};margin-right:6px"></span>'
+        item_title = _html.escape(it.get("title", f"Item {i + 1}"))
+        dots_html += (
+            f'<a href="?{q}_run_dot={i}" target="_self"'
+            f' title="{item_title}"'
+            f' style="{dot_style};margin-right:6px;cursor:pointer;'
+            f'text-decoration:none;display:inline-block"></a>'
+        )
 
     hcol, bcol = st.columns([7, 2])
     hcol.markdown(
@@ -2809,7 +2821,7 @@ def show_topnav():
             if session_obj:
                 st.session_state["current_session_id"]   = sess_id_val
                 st.session_state["current_session_name"] = session_obj["name"]
-                st.session_state["run_item_index"]        = 0
+                st.session_state["run_item_index"]        = None
                 if sess_status_val == "preparing":
                     st.session_state["page"] = "prepare"
                 elif sess_status_val == "complete":
@@ -2859,6 +2871,20 @@ def show_topnav():
             update_backlog_item_outcome(run_item_id, run_outcome, notes)
             st.session_state["run_item_index"] = int(run_idx)
             st.session_state["outcome_saved"] = True
+        st.rerun()
+        return
+
+    # ── Handle progress dot navigation ───────────────────────────────────────
+    run_dot = st.query_params.get("_run_dot", "")
+    if run_dot:
+        try:
+            del st.query_params["_run_dot"]
+        except Exception:
+            pass
+        try:
+            st.session_state["run_item_index"] = int(run_dot)
+        except ValueError:
+            pass
         st.rerun()
         return
 
