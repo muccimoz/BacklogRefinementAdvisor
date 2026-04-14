@@ -929,7 +929,7 @@ def _generate_summary_csv(items: list) -> str:
             item.get("title", ""),
             clarity_full.replace(" Clarity", ""),
             item.get("threshold_zone", "") or "",
-            item.get("outcome", "") or "",
+            item.get("outcome") or "Pending",
             item.get("outcome_notes", "") or "",
             _format_assessed_date(item.get("created_at", "")),
         ])
