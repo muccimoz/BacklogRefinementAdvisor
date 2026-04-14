@@ -1231,7 +1231,7 @@ def page_teams():
             'AI-powered sprint readiness assessments for your team\'s backlog — '
             'using Mike Cohn\'s Product Backlog Refinement Checklist and Claude.'
             '</div></div>'
-            '<div style="display:flex;align-items:flex-start;gap:0;max-width:820px;margin:0 auto 32px">'
+            '<div style="display:flex;align-items:stretch;gap:0;max-width:820px;margin:0 auto 32px">'
 
             '<div style="flex:1;background:#fff;border:1px solid #e0e3e8;border-radius:10px;'
             'box-shadow:0 1px 4px rgba(0,0,0,0.07);padding:24px 20px;text-align:center">'
