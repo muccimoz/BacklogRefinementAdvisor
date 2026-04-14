@@ -745,6 +745,7 @@ def _render_mistakes_callout_html(text: str) -> str:
 def _render_checklist_group_html(group_text: str) -> str:
     """Render one checklist group as styled HTML with coloured ✔/✗/? and blue questions."""
     html = ""
+    last_icon = None  # track last checklist item type to gate blue questions
     for line in group_text.split("\n"):
         stripped = line.strip()
         if not stripped:
@@ -757,6 +758,7 @@ def _render_checklist_group_html(group_text: str) -> str:
                 f'padding:5px 8px;border-radius:4px;margin:0 0 8px 0">{heading}</div>'
             )
         elif stripped.startswith("✔"):
+            last_icon = "pass"
             text = _html.escape(stripped[1:].strip())
             html += (
                 f'<div style="display:flex;gap:7px;align-items:flex-start;margin:5px 0;font-size:13px">'
@@ -764,6 +766,7 @@ def _render_checklist_group_html(group_text: str) -> str:
                 f'<span style="color:#333;line-height:1.4">{text}</span></div>'
             )
         elif stripped.startswith("✗"):
+            last_icon = "fail"
             text = _html.escape(stripped[1:].strip())
             html += (
                 f'<div style="display:flex;gap:7px;align-items:flex-start;margin:5px 0;font-size:13px">'
@@ -771,6 +774,7 @@ def _render_checklist_group_html(group_text: str) -> str:
                 f'<span style="color:#333;line-height:1.4">{text}</span></div>'
             )
         elif stripped.startswith("?"):
+            last_icon = "uncertain"
             text = _html.escape(stripped[1:].strip())
             html += (
                 f'<div style="display:flex;gap:7px;align-items:flex-start;margin:5px 0;font-size:13px">'
@@ -778,13 +782,14 @@ def _render_checklist_group_html(group_text: str) -> str:
                 f'<span style="color:#333;line-height:1.4">{text}</span></div>'
             )
         elif line.startswith(" ") or line.startswith("\t"):
-            q = stripped.lstrip("- ").strip()
-            if q:
-                html += (
-                    f'<div style="font-size:12px;color:#1565C0;padding:3px 8px;'
-                    f'border-left:2px solid #90CAF9;margin:4px 0 4px 20px;'
-                    f'line-height:1.4">{_html.escape(q)}</div>'
-                )
+            if last_icon in ("fail", "uncertain"):
+                q = stripped.lstrip("- ").strip()
+                if q:
+                    html += (
+                        f'<div style="font-size:12px;color:#1565C0;padding:3px 8px;'
+                        f'border-left:2px solid #90CAF9;margin:4px 0 4px 20px;'
+                        f'line-height:1.4">{_html.escape(q)}</div>'
+                    )
         else:
             html += (
                 f'<div style="font-size:13px;color:#333;margin:4px 0">'
