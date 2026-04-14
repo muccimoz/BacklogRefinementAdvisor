@@ -56,6 +56,19 @@ button[data-testid="stBaseButton-primaryFormSubmit"]:hover {
     background-color: #1251a3 !important;
     border-color:     #1251a3 !important;
 }
+button[data-testid="stBaseButton-primary"]:disabled,
+button[data-testid="stBaseButton-primaryFormSubmit"]:disabled {
+    background-color: #8ab0e0 !important;
+    border-color:     #8ab0e0 !important;
+    color:            #fff !important;
+    cursor:           not-allowed !important;
+}
+button[data-testid="stBaseButton-secondary"]:disabled {
+    background-color: #f0f2f5 !important;
+    border-color:     #d0d4db !important;
+    color:            #aab0bb !important;
+    cursor:           not-allowed !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1119,64 +1132,75 @@ def _dialog_delete_item(item: dict):
 
 # ── Pages ──────────────────────────────────────────────────────────────────────
 def page_login():
-    st.title("Backlog Refinement Advisor")
-    st.write("AI-powered backlog item readiness assessment.")
-    st.divider()
+    st.markdown(
+        '<div style="text-align:center;padding:48px 0 32px">'
+        '<div style="font-size:28px;font-weight:700;color:#1e2a3a;margin-bottom:10px">'
+        'Backlog Refinement Advisor</div>'
+        '<div style="font-size:14px;color:#666">'
+        'AI-powered backlog item readiness assessment</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
-    tab_login, tab_signup = st.tabs(["Log In", "Sign Up"])
+    _, mid, _ = st.columns([1, 3, 1])
+    with mid:
+        tab_login, tab_signup = st.tabs(["Log In", "Sign Up"])
 
-    with tab_login:
-        with st.form("login_form"):
-            email     = st.text_input("Email")
-            password  = st.text_input("Password", type="password")
-            submitted = st.form_submit_button("Log In")
-        if submitted:
-            if not email or not password:
-                st.warning("Please enter your email and password.")
-            else:
-                err = do_login(email, password)
-                if err:
-                    st.error(f"Login failed: {err}")
+        with tab_login:
+            with st.form("login_form"):
+                email     = st.text_input("Email")
+                password  = st.text_input("Password", type="password")
+                submitted = st.form_submit_button("Log In", type="primary",
+                                                  use_container_width=True)
+            if submitted:
+                if not email or not password:
+                    st.warning("Please enter your email and password.")
                 else:
-                    st.rerun()
-        st.markdown("---")
-        if st.button("Forgot your password?"):
-            st.session_state["show_forgot"] = True
-            st.rerun()
-        if st.session_state.get("show_forgot"):
-            with st.form("forgot_form"):
-                reset_email = st.text_input("Enter your email")
-                send = st.form_submit_button("Send Reset Email")
-            if send:
-                if reset_email:
-                    try:
-                        get_supabase().auth.reset_password_email(
-                            reset_email,
-                            {"redirect_to": f"{st.secrets['app_url']}?type=recovery"},
-                        )
-                        st.success("Reset email sent. Check your inbox.")
-                    except Exception as e:
-                        st.error(f"Failed to send reset email: {e}")
-                else:
-                    st.warning("Please enter your email.")
+                    err = do_login(email, password)
+                    if err:
+                        st.error(f"Login failed: {err}")
+                    else:
+                        st.rerun()
+            st.markdown("---")
+            if st.button("Forgot your password?"):
+                st.session_state["show_forgot"] = True
+                st.rerun()
+            if st.session_state.get("show_forgot"):
+                with st.form("forgot_form"):
+                    reset_email = st.text_input("Enter your email")
+                    send = st.form_submit_button("Send Reset Email",
+                                                 use_container_width=True)
+                if send:
+                    if reset_email:
+                        try:
+                            get_supabase().auth.reset_password_email(
+                                reset_email,
+                                {"redirect_to": f"{st.secrets['app_url']}?type=recovery"},
+                            )
+                            st.success("Reset email sent. Check your inbox.")
+                        except Exception as e:
+                            st.error(f"Failed to send reset email: {e}")
+                    else:
+                        st.warning("Please enter your email.")
 
-    with tab_signup:
-        with st.form("signup_form"):
-            new_email    = st.text_input("Email",            key="su_email")
-            new_password = st.text_input("Password",         type="password", key="su_pass")
-            confirm      = st.text_input("Confirm Password", type="password", key="su_confirm")
-            submitted_su = st.form_submit_button("Sign Up")
-        if submitted_su:
-            if not new_email or not new_password:
-                st.warning("Please fill in all fields.")
-            elif new_password != confirm:
-                st.error("Passwords do not match.")
-            else:
-                err, msg = do_signup(new_email, new_password)
-                if err:
-                    st.error(f"Sign up failed: {err}")
+        with tab_signup:
+            with st.form("signup_form"):
+                new_email    = st.text_input("Email",            key="su_email")
+                new_password = st.text_input("Password",         type="password", key="su_pass")
+                confirm      = st.text_input("Confirm Password", type="password", key="su_confirm")
+                submitted_su = st.form_submit_button("Sign Up", type="primary",
+                                                     use_container_width=True)
+            if submitted_su:
+                if not new_email or not new_password:
+                    st.warning("Please fill in all fields.")
+                elif new_password != confirm:
+                    st.error("Passwords do not match.")
                 else:
-                    st.success(msg)
+                    err, msg = do_signup(new_email, new_password)
+                    if err:
+                        st.error(f"Sign up failed: {err}")
+                    else:
+                        st.success(msg)
 
 
 def page_teams():
@@ -2522,6 +2546,9 @@ def page_run_session():
     raw_output    = item.get("gemini_output", "") or ""
     sections      = _parse_assessment(raw_output)
 
+    if sections.get("overall"):
+        st.markdown(_render_overall_callout_html(sections["overall"]), unsafe_allow_html=True)
+
     st.markdown(
         _render_rating_cards_html(
             clarity_short, zone,
@@ -2530,9 +2557,6 @@ def page_run_session():
         ),
         unsafe_allow_html=True,
     )
-
-    if sections.get("overall"):
-        st.markdown(_render_overall_callout_html(sections["overall"]), unsafe_allow_html=True)
 
     mistakes_html = _render_mistakes_callout_html(sections.get("common_mistakes", ""))
     if mistakes_html:
