@@ -1610,10 +1610,14 @@ def page_prepare():
     start_href     = f"?{q}_sess_action=start_session&sess_id={_html.escape(str(session_id))}"
 
     col_hdr, col_start = st.columns([7, 2])
+    _panel_open = not _no_panel_open
+    _back_href  = (f'?{q}_prep_action=close_panel' if _panel_open
+                   else f'?{q}_nav=sessions')
+    _back_label = "← Session" if _panel_open else "← Session List"
     col_hdr.markdown(
-        f'<a href="?{q}_nav=sessions" target="_self"'
+        f'<a href="{_back_href}" target="_self"'
         f' style="font-size:13px;color:#1565C0;text-decoration:none;font-weight:600;'
-        f'display:inline-block;margin-bottom:6px">← Session List</a>'
+        f'display:inline-block;margin-bottom:6px">{_back_label}</a>'
         f'<h1 style="margin:0 0 4px 0;color:#1e2a3a;font-size:26px;font-weight:700">'
         f'{_html.escape(session_name)}</h1>'
         f'<p style="margin:0 0 20px 0;color:#555;font-size:15px">'
@@ -2860,7 +2864,7 @@ def show_topnav():
 
     # ── Handle prepare-page toolbar toggles ──────────────────────────────────
     prep_action = st.query_params.get("_prep_action", "")
-    if prep_action in ("toggle_add", "toggle_jira", "toggle_csv"):
+    if prep_action in ("toggle_add", "toggle_jira", "toggle_csv", "close_panel"):
         try:
             del st.query_params["_prep_action"]
         except Exception:
@@ -2887,6 +2891,11 @@ def show_topnav():
                 st.session_state["show_add_item"]   = False
                 st.session_state["show_jira_panel"] = False
                 st.session_state.pop("jira_issues", None)
+        elif prep_action == "close_panel":
+            st.session_state["show_add_item"]   = False
+            st.session_state["show_jira_panel"] = False
+            st.session_state["show_csv_panel"]  = False
+            st.session_state.pop("jira_issues", None)
         st.rerun()
         return
 
