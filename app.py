@@ -2558,7 +2558,7 @@ def page_prepare():
             f'<div>{_gaps_badge_html(gaps, "gap")}</div>'
             f'<div>{_gaps_badge_html(uncertain, "uncertain")}</div>'
             f'<div style="color:#aaa;font-size:12px">{assessed_str}</div>'
-            f'<div style="display:flex;gap:4px">'
+            f'<div style="display:flex;gap:8px">'
             f'<a href="{edit_href}" target="_self" style="{btn_edit}">Edit</a>'
             f'<a href="{delete_href}" target="_self" style="{btn_del}">Delete</a>'
             f'</div>'
