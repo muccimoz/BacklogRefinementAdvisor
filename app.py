@@ -591,8 +591,16 @@ THRESHOLD_ZONE: [Too Vague / Ideal / Over-Refined]
 ## Checklist Analysis
 
 ### 1. Shared Understanding
-[For each of the 4 items, start the line with ✔ (satisfied), ✗ (gap), or ? (uncertain), followed by the checklist item text. For any ✗ or ? items, add 1-2 clarifying questions on indented lines beneath. Example:
+[For each of the 4 items, start the line with ✔ (satisfied), ✗ (gap), or ? (uncertain), followed by the checklist item text.
+
+Rules for indented lines beneath each checklist item:
+- After a ✔ item: add exactly one brief indented line explaining why it passes. Never skip this.
+- After a ✗ or ? item: add 1-2 indented clarifying questions.
+- Never add indented lines for any other reason. Only ✔ items get a "why" line; only ✗ and ? items get questions.
+
+Example:
 ✔ Team can explain the item in their own words
+    The title and description clearly articulate the user need and context.
 ✗ Major acceptance criteria have been identified
     What specific acceptance criteria should be defined?
 ? Item is small enough to complete within a sprint
@@ -815,14 +823,19 @@ def _render_checklist_group_html(group_text: str) -> str:
                 f'<span style="color:#333;line-height:1.4">{text}</span></div>'
             )
         elif line.startswith(" ") or line.startswith("\t"):
-            if last_icon in ("fail", "uncertain"):
-                q = stripped.lstrip("- ").strip()
-                if q:
-                    html += (
-                        f'<div style="font-size:12px;color:#1565C0;padding:3px 8px;'
-                        f'border-left:2px solid #90CAF9;margin:4px 0 4px 20px;'
-                        f'line-height:1.4">{_html.escape(q)}</div>'
-                    )
+            q = stripped.lstrip("- ").strip()
+            if q and last_icon == "pass":
+                html += (
+                    f'<div style="font-size:12px;color:#27ae60;padding:3px 8px;'
+                    f'border-left:2px solid #a8d5b5;margin:4px 0 4px 20px;'
+                    f'line-height:1.4">{_html.escape(q)}</div>'
+                )
+            elif q and last_icon in ("fail", "uncertain"):
+                html += (
+                    f'<div style="font-size:12px;color:#1565C0;padding:3px 8px;'
+                    f'border-left:2px solid #90CAF9;margin:4px 0 4px 20px;'
+                    f'line-height:1.4">{_html.escape(q)}</div>'
+                )
         else:
             html += (
                 f'<div style="font-size:13px;color:#333;margin:4px 0">'
