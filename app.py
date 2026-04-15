@@ -1035,6 +1035,68 @@ def _adf_to_text(node, depth: int = 0) -> str:
     return "\n".join(p for p in parts if p.strip())
 
 
+# ── Jira field mapping ────────────────────────────────────────────────────────
+
+_JIRA_AUTO_KEYWORDS = {
+    "title":               ["summary", "name", "title"],
+    "description":         ["description", "desc", "details", "body"],
+    "acceptance_criteria": ["acceptance criteria", "acceptance_criteria", "ac",
+                            "definition of done", "dod", "done criteria"],
+    "dependencies":        ["dependencies", "depends on", "blocked by", "blockers"],
+    "assumptions":         ["assumptions", "assumption"],
+    "notes":               ["notes", "note", "comments", "comment", "additional info"],
+}
+_JIRA_APP_OPTIONS = [
+    "— Not imported —", "Title", "Description",
+    "Acceptance Criteria", "Dependencies", "Assumptions", "Notes",
+]
+_JIRA_APP_KEYS = {
+    "Title": "title", "Description": "description",
+    "Acceptance Criteria": "acceptance_criteria",
+    "Dependencies": "dependencies", "Assumptions": "assumptions", "Notes": "notes",
+}
+
+
+def _jira_field_value(fields: dict, field_key: str) -> str:
+    """Extract a plain-text value from a Jira issue fields dict."""
+    val = fields.get(field_key)
+    if val is None:
+        return ""
+    if isinstance(val, dict):
+        return _adf_to_text(val).strip()
+    if isinstance(val, str):
+        return val.strip()
+    return ""
+
+
+def _jira_eligible_fields(issues: list) -> list:
+    """Return field keys that contain text content in at least one issue."""
+    seen = {}
+    for issue in issues:
+        for key, val in issue.get("fields", {}).items():
+            if key in seen:
+                continue
+            if isinstance(val, str) and val.strip():
+                seen[key] = True
+            elif isinstance(val, dict) and val.get("type") == "doc":
+                if _adf_to_text(val).strip():
+                    seen[key] = True
+    return sorted(seen.keys())
+
+
+def _jira_auto_detect(eligible: list, labels: dict) -> dict:
+    """Return auto-detected mapping of app_field_key -> jira_field_key."""
+    result = {}
+    for app_field, keywords in _JIRA_AUTO_KEYWORDS.items():
+        for jira_key in eligible:
+            label = labels.get(jira_key, jira_key).lower()
+            if any(kw in label for kw in keywords):
+                if app_field not in result:
+                    result[app_field] = jira_key
+                break
+    return result
+
+
 def _count_checklist_gaps(gemini_output: str) -> tuple[int, int]:
     """Return (gap_count, uncertain_count) by scanning ✗ and ? lines in the checklist."""
     if not gemini_output:
@@ -1860,8 +1922,8 @@ def page_prepare():
                     "(e.g. `project = PAY`)\n"
                     "- Add filters like sprint or issue type to narrow results\n"
                     "- Select the issues you want to import, then click **Import & Assess Selected**\n"
-                    "- Note: Jira import brings in Title and Description only. Acceptance Criteria, "
-                    "Dependencies, and Assumptions will be blank — Claude will flag these as gaps."
+                    "- After fetching results, you will be asked to map Jira fields to the app's "
+                    "fields (Title, Description, Acceptance Criteria, etc.) before selecting issues to import"
                 )
             jira_issues = st.session_state.get("jira_issues")
 
@@ -1890,14 +1952,31 @@ def page_prepare():
                                     params={
                                         "jql":        jql.strip(),
                                         "maxResults": 50,
-                                        "fields":     "summary,description,issuetype",
+                                        "fields":     "*all",
                                     },
                                     timeout=15,
                                 )
                                 if resp.status_code == 200:
                                     issues = resp.json().get("issues", [])
                                     if issues:
-                                        st.session_state["jira_issues"] = issues
+                                        field_labels = {}
+                                        try:
+                                            fl_resp = httpx.get(
+                                                f"{st.secrets['jira_url']}/rest/api/3/field",
+                                                auth=(st.secrets["jira_email"],
+                                                      st.secrets["jira_api_token"]),
+                                                timeout=10,
+                                            )
+                                            if fl_resp.status_code == 200:
+                                                for f in fl_resp.json():
+                                                    field_labels[f["id"]] = f["name"]
+                                        except Exception:
+                                            pass
+                                        eligible = _jira_eligible_fields(issues)
+                                        st.session_state["jira_issues"]          = issues
+                                        st.session_state["jira_field_labels"]    = field_labels
+                                        st.session_state["jira_eligible_fields"] = eligible
+                                        st.session_state.pop("jira_field_map", None)
                                         st.rerun()
                                     else:
                                         st.info("No issues found for that query.")
@@ -1917,8 +1996,73 @@ def page_prepare():
                                 with st.expander("Technical details"):
                                     st.code(str(e), language=None)
 
+            elif st.session_state.get("jira_field_map") is None:
+                # ── Step 2: Field mapping ─────────────────────────────────
+                field_labels = st.session_state.get("jira_field_labels", {})
+                eligible     = st.session_state.get("jira_eligible_fields", [])
+                auto_map     = _jira_auto_detect(eligible, field_labels)
+                auto_reverse = {}
+                for app_field, jira_key in auto_map.items():
+                    app_label = next(
+                        (lbl for lbl, k in _JIRA_APP_KEYS.items() if k == app_field), None
+                    )
+                    if app_label:
+                        auto_reverse[jira_key] = app_label
+
+                st.caption(
+                    f"{len(jira_issues)} issues found. "
+                    "Map Jira fields to assessment fields, then click Continue."
+                )
+                st.write("")
+
+                hdr1, hdr2 = st.columns([2, 2])
+                hdr1.markdown("**Jira Field**")
+                hdr2.markdown("**Maps to**")
+
+                for jira_key in eligible:
+                    label         = field_labels.get(jira_key, jira_key)
+                    default_opt   = auto_reverse.get(jira_key, "— Not imported —")
+                    default_idx   = (_JIRA_APP_OPTIONS.index(default_opt)
+                                     if default_opt in _JIRA_APP_OPTIONS else 0)
+                    c1, c2 = st.columns([2, 2])
+                    c1.markdown(
+                        f'<div style="padding-top:8px;font-size:13px">{label}</div>',
+                        unsafe_allow_html=True,
+                    )
+                    c2.selectbox(
+                        "", _JIRA_APP_OPTIONS,
+                        index=default_idx,
+                        key=f"jira_map_{jira_key}",
+                        label_visibility="collapsed",
+                    )
+
+                st.write("")
+                cont_col, back_col, _ = st.columns([2, 2, 6])
+
+                if cont_col.button("Continue →", type="primary",
+                                   key="btn_jira_map_cont", use_container_width=True):
+                    field_map = {}
+                    for jira_key in eligible:
+                        selected_opt = st.session_state.get(
+                            f"jira_map_{jira_key}", "— Not imported —"
+                        )
+                        app_key = _JIRA_APP_KEYS.get(selected_opt)
+                        if app_key:
+                            field_map[app_key] = jira_key
+                    if "title" not in field_map:
+                        st.error("Title must be mapped before continuing.")
+                    else:
+                        st.session_state["jira_field_map"] = field_map
+                        st.rerun()
+
+                if back_col.button("← Back", key="btn_jira_map_back", use_container_width=True):
+                    for k in ("jira_issues", "jira_field_labels", "jira_eligible_fields"):
+                        st.session_state.pop(k, None)
+                    st.rerun()
+
             else:
-                # ── Step 2: Select issues ─────────────────────────────────
+                # ── Step 3: Select issues ─────────────────────────────────
+                jira_field_map = st.session_state.get("jira_field_map", {})
                 st.caption(f"{len(jira_issues)} issues found. Select the ones to import.")
 
                 sel_col1, sel_col2, _ = st.columns([2, 2, 6])
@@ -1933,7 +2077,7 @@ def page_prepare():
                 for issue in jira_issues:
                     ikey    = issue["key"]
                     fields  = issue.get("fields", {})
-                    summary = fields.get("summary", "(no summary)")
+                    summary = _jira_field_value(fields, jira_field_map.get("title", "summary"))
                     itype   = fields.get("issuetype", {}).get("name", "")
                     cb_col, info_col = st.columns([1, 11])
                     cb_col.checkbox("", key=f"jira_cb_{ikey}")
@@ -1961,26 +2105,31 @@ def page_prepare():
                     errors       = []
 
                     for n, issue in enumerate(selected):
-                        fields   = issue.get("fields", {})
-                        summary  = fields.get("summary", "")
-                        desc_adf = fields.get("description")
-                        desc     = _adf_to_text(desc_adf) if desc_adf else ""
+                        f     = issue.get("fields", {})
+                        title = _jira_field_value(f, jira_field_map.get("title", "summary"))
+                        desc  = _jira_field_value(f, jira_field_map.get("description", ""))
+                        ac    = _jira_field_value(f, jira_field_map.get("acceptance_criteria", ""))
+                        deps  = _jira_field_value(f, jira_field_map.get("dependencies", ""))
+                        assmp = _jira_field_value(f, jira_field_map.get("assumptions", ""))
+                        notes = _jira_field_value(f, jira_field_map.get("notes", ""))
 
-                        status_text.text(f"Assessing {n + 1} of {len(selected)}: {summary[:60]}...")
+                        status_text.text(f"Assessing {n + 1} of {len(selected)}: {title[:60]}...")
                         progress_bar.progress((n + 1) / len(selected))
 
                         try:
                             clarity, zone, output = run_claude_evaluation(
-                                summary, desc, "", "", "", "",
+                                title, desc, ac, deps, assmp, notes,
                             )
                             create_backlog_item(
-                                session_id, summary, desc,
-                                "", "", "", "", clarity, zone, output,
+                                session_id, title, desc,
+                                ac, deps, assmp, notes, clarity, zone, output,
                             )
                         except Exception as e:
                             errors.append(f"{issue['key']}: {e}")
 
-                    st.session_state.pop("jira_issues", None)
+                    for k in ("jira_issues", "jira_field_labels",
+                              "jira_eligible_fields", "jira_field_map"):
+                        st.session_state.pop(k, None)
                     st.session_state["show_jira_panel"]  = False
                     st.session_state["jira_import_done"] = len(selected) - len(errors)
                     if errors:
@@ -1988,11 +2137,13 @@ def page_prepare():
                     st.rerun()
 
                 if back_col.button("← Back", key="btn_jira_back", use_container_width=True):
-                    st.session_state.pop("jira_issues", None)
+                    st.session_state.pop("jira_field_map", None)
                     st.rerun()
 
                 if cancel_col.button("Cancel", key="btn_jira_cancel", use_container_width=True):
-                    st.session_state.pop("jira_issues", None)
+                    for k in ("jira_issues", "jira_field_labels",
+                              "jira_eligible_fields", "jira_field_map"):
+                        st.session_state.pop(k, None)
                     st.session_state["show_jira_panel"] = False
                     st.rerun()
 
@@ -3144,6 +3295,9 @@ def show_topnav():
                 st.session_state["show_jira_panel"] = False
                 st.session_state["show_csv_panel"]  = False
                 st.session_state.pop("jira_issues", None)
+                st.session_state.pop("jira_field_labels", None)
+                st.session_state.pop("jira_eligible_fields", None)
+                st.session_state.pop("jira_field_map", None)
         elif prep_action == "toggle_jira":
             new_val = not st.session_state.get("show_jira_panel", False)
             st.session_state["show_jira_panel"] = new_val
@@ -3152,6 +3306,9 @@ def show_topnav():
                 st.session_state["show_csv_panel"] = False
             if not new_val:
                 st.session_state.pop("jira_issues", None)
+                st.session_state.pop("jira_field_labels", None)
+                st.session_state.pop("jira_eligible_fields", None)
+                st.session_state.pop("jira_field_map", None)
         elif prep_action == "toggle_csv":
             new_val = not st.session_state.get("show_csv_panel", False)
             st.session_state["show_csv_panel"]  = new_val
@@ -3159,12 +3316,18 @@ def show_topnav():
                 st.session_state["show_add_item"]   = False
                 st.session_state["show_jira_panel"] = False
                 st.session_state.pop("jira_issues", None)
+                st.session_state.pop("jira_field_labels", None)
+                st.session_state.pop("jira_eligible_fields", None)
+                st.session_state.pop("jira_field_map", None)
         elif prep_action == "close_panel":
             st.session_state["show_add_item"]   = False
             st.session_state["show_jira_panel"] = False
             st.session_state["show_csv_panel"]  = False
             st.session_state.pop("edit_item_id", None)
             st.session_state.pop("jira_issues", None)
+            st.session_state.pop("jira_field_labels", None)
+            st.session_state.pop("jira_eligible_fields", None)
+            st.session_state.pop("jira_field_map", None)
         st.rerun()
         return
 
