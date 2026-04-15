@@ -425,8 +425,11 @@ def create_refinement_session(team_id: str, name: str, session_date: str | None 
     db().table("refinement_sessions").insert(row).execute()
 
 
-def update_refinement_session(session_id: str, name: str):
-    db().table("refinement_sessions").update({"name": name}).eq("id", session_id).execute()
+def update_refinement_session(session_id: str, name: str, session_date: str | None = None):
+    data = {"name": name}
+    if session_date is not None:
+        data["session_date"] = session_date
+    db().table("refinement_sessions").update(data).eq("id", session_id).execute()
 
 
 def delete_refinement_session(session_id: str):
@@ -1064,13 +1067,20 @@ def _dialog_rename_team(team: dict):
         st.rerun()
 
 
-@st.dialog("Rename Session")
+@st.dialog("Edit Session")
 def _dialog_rename_session(session: dict):
-    new_name = st.text_input("New name", value=session["name"])
+    new_name = st.text_input("Name", value=session["name"])
+    try:
+        current_date = (date_type.fromisoformat(session["session_date"])
+                        if session.get("session_date") else date_type.today())
+    except Exception:
+        current_date = date_type.today()
+    new_date = st.date_input("Session Date", value=current_date)
     c1, c2 = st.columns(2)
-    if c1.button("Save", use_container_width=True):
+    if c1.button("Save", use_container_width=True, type="primary"):
         if new_name.strip():
-            update_refinement_session(session["id"], new_name.strip())
+            date_str = new_date.isoformat() if new_date else None
+            update_refinement_session(session["id"], new_name.strip(), date_str)
             if st.session_state.get("current_session_id") == session["id"]:
                 st.session_state["current_session_name"] = new_name.strip()
             st.session_state["session_renamed"] = True
@@ -1410,7 +1420,7 @@ def page_sessions():
     if st.session_state.pop("session_deleted", None):
         st.success(st.session_state.pop("session_deleted_name", "Session deleted."))
     if st.session_state.pop("session_renamed", None):
-        st.success("Session renamed.")
+        st.success("Session updated.")
 
     team_id  = st.session_state["current_team_id"]
     sessions = get_refinement_sessions_with_counts(team_id)
@@ -1539,7 +1549,7 @@ def page_sessions():
             f'<div style="color:#555">{"" if total == 0 else (f"{tagged}/{total}" if status == "in_progress" else str(total))}</div>'
             f'<div style="color:#aaa;font-size:12px">{date_str}</div>'
             f'<div><a href="{open_href}" target="_self" style="{btn_open}">Open</a></div>'
-            f'<div><a href="{rename_href}" target="_self" style="{btn_sec}">Rename</a></div>'
+            f'<div><a href="{rename_href}" target="_self" style="{btn_sec}">Edit</a></div>'
             f'<div><a href="{delete_href}" target="_self" style="{btn_del}">Delete</a></div>'
             f'</div>'
         )
