@@ -466,6 +466,23 @@ def delete_backlog_item(item_id: str):
     db().table("backlog_items").delete().eq("id", item_id).execute()
 
 
+def update_backlog_item_fields(item_id: str, title: str, description: str,
+                                acceptance_criteria: str, dependencies: str,
+                                assumptions: str, notes: str,
+                                clarity: str, zone: str, gemini_output: str):
+    db().table("backlog_items").update({
+        "title":               title,
+        "description":         description or None,
+        "acceptance_criteria": acceptance_criteria or None,
+        "dependencies":        dependencies or None,
+        "assumptions":         assumptions or None,
+        "notes":               notes or None,
+        "clarity_gradient":    clarity,
+        "threshold_zone":      zone,
+        "gemini_output":       gemini_output,
+    }).eq("id", item_id).execute()
+
+
 def update_backlog_item_outcome(item_id: str, outcome: str, outcome_notes: str):
     try:
         db().table("backlog_items").update({
@@ -1573,6 +1590,8 @@ def page_prepare():
 
     if st.session_state.pop("item_submitted", None):
         st.success("Item assessed and added.")
+    if st.session_state.pop("item_updated", None):
+        st.success("Item updated and re-assessed.")
     if st.session_state.pop("item_deleted", None):
         st.success(st.session_state.pop("item_deleted_name", "Item deleted."))
     jira_done = st.session_state.pop("jira_import_done", 0)
@@ -1591,6 +1610,7 @@ def page_prepare():
         st.session_state.get("show_add_item"),
         st.session_state.get("show_jira_panel"),
         st.session_state.get("show_csv_panel"),
+        st.session_state.get("edit_item_id"),
     ])
     if _no_panel_open:
         with st.expander("How to use this page"):
@@ -2370,6 +2390,86 @@ def page_prepare():
                         st.session_state["csv_import_errors"] = _imp_errs
                     st.rerun()
 
+    # ── Edit Item panel ───────────────────────────────────────────────────────
+    edit_item_id = st.session_state.get("edit_item_id")
+    if edit_item_id:
+        edit_item = next((it for it in items if str(it["id"]) == str(edit_item_id)), None)
+        if edit_item:
+            with st.container(border=True):
+                st.subheader("Edit Backlog Item")
+                st.caption("Update the fields below and click **Save & Re-assess** — Claude will re-evaluate the item with the new information.")
+                with st.form(f"edit_item_form_{edit_item_id}"):
+                    edit_title = st.text_input(
+                        "Title *", value=edit_item.get("title", ""),
+                        key=f"edit_title_{edit_item_id}")
+                    st.caption("A clear, specific title helps Claude understand scope immediately.")
+                    edit_desc = st.text_area(
+                        "Description", height=100,
+                        value=edit_item.get("description", "") or "",
+                        placeholder="What needs to be done and why",
+                        key=f"edit_desc_{edit_item_id}")
+                    st.caption("Include the user need and relevant context. The more detail here, the better Claude can assess clarity and vagueness.")
+                    edit_ac = st.text_area(
+                        "Acceptance Criteria", height=100,
+                        value=edit_item.get("acceptance_criteria", "") or "",
+                        placeholder="What must be true for this item to be considered complete",
+                        key=f"edit_ac_{edit_item_id}")
+                    st.markdown(
+                        '<p style="font-size:12px;color:#e65100;margin:0">⚠ If left blank, '
+                        'Claude will flag missing acceptance criteria as a checklist gap.</p>',
+                        unsafe_allow_html=True,
+                    )
+                    edit_deps = st.text_area(
+                        "Dependencies", height=100,
+                        value=edit_item.get("dependencies", "") or "",
+                        placeholder="Other items or systems this relies on",
+                        key=f"edit_deps_{edit_item_id}")
+                    st.caption("Any teams, services, or stories this item relies on. If blank, Claude assumes none.")
+                    edit_assm = st.text_area(
+                        "Assumptions", height=100,
+                        value=edit_item.get("assumptions", "") or "",
+                        placeholder="What the team is taking as given",
+                        key=f"edit_assm_{edit_item_id}")
+                    st.caption("Unstated assumptions are a common sprint surprise. List them here so Claude can flag risks.")
+                    edit_notes = st.text_area(
+                        "Notes", height=80,
+                        value=edit_item.get("notes", "") or "",
+                        placeholder="Anything else relevant",
+                        key=f"edit_notes_{edit_item_id}")
+                    btn_col1, btn_col2 = st.columns([3, 1])
+                    edit_submitted = btn_col1.form_submit_button(
+                        "Save & Re-assess", type="primary", use_container_width=True)
+                    edit_cancelled = btn_col2.form_submit_button(
+                        "Cancel", use_container_width=True)
+
+                if edit_cancelled:
+                    st.session_state.pop("edit_item_id", None)
+                    st.rerun()
+
+                if edit_submitted:
+                    if not edit_title.strip():
+                        st.warning("Title is required.")
+                    else:
+                        with st.spinner("Re-evaluating with Claude..."):
+                            try:
+                                clarity, zone, output = run_claude_evaluation(
+                                    edit_title.strip(), edit_desc, edit_ac,
+                                    edit_deps, edit_assm, edit_notes,
+                                )
+                                update_backlog_item_fields(
+                                    edit_item_id,
+                                    edit_title.strip(), edit_desc, edit_ac,
+                                    edit_deps, edit_assm, edit_notes,
+                                    clarity, zone, output,
+                                )
+                                st.session_state.pop("edit_item_id", None)
+                                st.session_state["item_updated"] = True
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Re-assessment failed: {e}")
+        else:
+            st.session_state.pop("edit_item_id", None)
+
     # ── Items table — pure HTML ───────────────────────────────────────────────
     if not items:
         if not show_add and not show_jira and not show_csv:
@@ -2402,13 +2502,18 @@ def page_prepare():
         'padding:5px 10px;font-size:12px;font-weight:600;white-space:nowrap;'
         'background:#fff;color:#c62828;border:1px solid #ef9a9a'
     )
+    btn_edit = (
+        'text-decoration:none;display:inline-block;border-radius:5px;'
+        'padding:5px 10px;font-size:12px;font-weight:600;white-space:nowrap;'
+        'background:#fff;color:#1565C0;border:1px solid #90CAF9'
+    )
 
     tbl = (
         '<div style="background:#fff;border-radius:10px;'
         'box-shadow:0 1px 4px rgba(0,0,0,0.08);overflow:hidden;margin-top:8px">'
         '<div style="background:#1e2a3a;color:#fff;padding:10px 16px;'
         'font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;'
-        'display:grid;grid-template-columns:5fr 2fr 2fr 1fr 2fr 2fr 1.5fr;gap:8px">'
+        'display:grid;grid-template-columns:5fr 2fr 2fr 1fr 2fr 2fr 2.5fr;gap:8px">'
         '<div><span class="th-tip">Item &#9432;'
         '<span class="tip-text">The backlog item being assessed</span>'
         '</span></div>'
@@ -2441,10 +2546,11 @@ def page_prepare():
         title_s         = _html.escape(item["title"])
         border          = "" if i == len(items) - 1 else "border-bottom:1px solid #eef0f3"
         delete_href     = f"?{q}_item_action=delete_item&item_id={item_id_s}"
+        edit_href       = f"?{q}_item_action=edit_item&item_id={item_id_s}"
 
         tbl += (
             f'<div class="item-row" style="display:grid;'
-            f'grid-template-columns:5fr 2fr 2fr 1fr 2fr 2fr 1.5fr;'
+            f'grid-template-columns:5fr 2fr 2fr 1fr 2fr 2fr 2.5fr;'
             f'padding:12px 16px;{border};align-items:center;font-size:13px">'
             f'<div style="font-weight:700;color:#1e2a3a">{title_s}</div>'
             f'<div>{_clarity_badge(clarity_short)}</div>'
@@ -2452,7 +2558,10 @@ def page_prepare():
             f'<div>{_gaps_badge_html(gaps, "gap")}</div>'
             f'<div>{_gaps_badge_html(uncertain, "uncertain")}</div>'
             f'<div style="color:#aaa;font-size:12px">{assessed_str}</div>'
-            f'<div><a href="{delete_href}" target="_self" style="{btn_del}">Delete</a></div>'
+            f'<div style="display:flex;gap:4px">'
+            f'<a href="{edit_href}" target="_self" style="{btn_edit}">Edit</a>'
+            f'<a href="{delete_href}" target="_self" style="{btn_del}">Delete</a>'
+            f'</div>'
             f'</div>'
         )
 
@@ -2874,7 +2983,7 @@ def show_topnav():
     # ── Handle item actions (delete_item) ────────────────────────────────────
     item_action = st.query_params.get("_item_action", "")
     item_id_val = st.query_params.get("item_id", "")
-    if item_action in ("delete_item",):
+    if item_action in ("delete_item", "edit_item"):
         for k in ("_item_action", "item_id"):
             try:
                 del st.query_params[k]
@@ -2882,6 +2991,11 @@ def show_topnav():
                 pass
         if item_action == "delete_item" and item_id_val:
             st.session_state["pending_item_delete_id"] = item_id_val
+        elif item_action == "edit_item" and item_id_val:
+            st.session_state["edit_item_id"]    = item_id_val
+            st.session_state["show_add_item"]   = False
+            st.session_state["show_jira_panel"] = False
+            st.session_state["show_csv_panel"]  = False
         st.rerun()
         return
 
@@ -2951,6 +3065,7 @@ def show_topnav():
             st.session_state["show_add_item"]   = False
             st.session_state["show_jira_panel"] = False
             st.session_state["show_csv_panel"]  = False
+            st.session_state.pop("edit_item_id", None)
             st.session_state.pop("jira_issues", None)
         st.rerun()
         return
