@@ -1583,7 +1583,8 @@ def page_sessions():
             "- **In Progress** — the session has been started; the team is reviewing items together\n"
             "- **Complete** — all items have been reviewed and tagged with outcomes\n\n"
             "Open a Preparing session to add more items. "
-            "Open an In Progress or Complete session to go directly to the team view."
+            "Open an In Progress session to go to Session Review. "
+            "Open a Complete session to go to the Session Summary."
         )
 
     # ── Add Session form ──────────────────────────────────────────────────────
@@ -1921,9 +1922,9 @@ def page_prepare():
                     "- Replace the project key in the default query with your own "
                     "(e.g. `project = PAY`)\n"
                     "- Add filters like sprint or issue type to narrow results\n"
-                    "- Select the issues you want to import, then click **Import & Assess Selected**\n"
-                    "- After fetching results, you will be asked to map Jira fields to the app's "
-                    "fields (Title, Description, Acceptance Criteria, etc.) before selecting issues to import"
+                    "- After fetching results, map your Jira fields to the app's fields "
+                    "(Title, Description, Acceptance Criteria, etc.)\n"
+                    "- Select the issues you want to import, then click **Import & Assess Selected**"
                 )
             jira_issues = st.session_state.get("jira_issues")
 
@@ -2831,7 +2832,8 @@ def page_run_session():
             "This is the team meeting view — one item at a time, designed for screen sharing "
             "or projector display. Items were assessed by Claude before the meeting; this page "
             "is where the team discusses results and records decisions.\n\n"
-            "- Use **Prev** and **Next** to move between items\n"
+            "- Use **Prev** and **Next** to move between items, or click any progress dot "
+            "to jump directly to that item\n"
             "- The progress dots at the top show which items have been tagged\n"
             "- Tag each item with an outcome and add optional notes\n"
             "- You can revisit any item to change its outcome during the session\n\n"
