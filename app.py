@@ -1442,6 +1442,19 @@ def page_sessions():
     team_id  = st.session_state["current_team_id"]
     sessions = get_refinement_sessions_with_counts(team_id)
 
+    # ── Apply sort ────────────────────────────────────────────────────────────
+    _s_col = st.session_state.get("sess_sort_col")
+    _s_dir = st.session_state.get("sess_sort_dir", "asc")
+    if _s_col == "status":
+        _status_order = {"preparing": 1, "in_progress": 2, "complete": 3}
+        sessions = sorted(sessions,
+                          key=lambda s: _status_order.get(s.get("status", ""), 99),
+                          reverse=(_s_dir == "desc"))
+    elif _s_col == "date":
+        sessions = sorted(sessions,
+                          key=lambda s: s.get("session_date") or s.get("created_at", ""),
+                          reverse=(_s_dir == "desc"))
+
     today        = date_type.today()
     default_name = ""
     sid          = st.session_state.get("session_id", "")
@@ -1533,7 +1546,18 @@ def page_sessions():
         '<div style="background:#1e2a3a;color:#fff;padding:10px 16px;'
         'font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;'
         'display:grid;grid-template-columns:4fr 2fr 1.2fr 2fr 1.5fr 1.5fr 1.5fr;gap:8px">'
-        '<div>Session</div><div>Status</div><div>Items</div><div>Date</div>'
+    )
+    _lnk = 'color:#fff;text-decoration:none'
+    for _col, _label in (("status", "Status"), ("date", "Date")):
+        _new_dir = "desc" if (_s_col == _col and _s_dir == "asc") else "asc"
+        _arrow   = (" ↑" if _s_dir == "asc" else " ↓") if _s_col == _col else ""
+        _col_href = f'?{q}_sess_sort={_col}&_sess_dir={_new_dir}'
+        if _col == "status":
+            _status_hdr = f'<a href="{_col_href}" target="_self" style="{_lnk}">{_label}{_arrow}</a>'
+        else:
+            _date_hdr = f'<a href="{_col_href}" target="_self" style="{_lnk}">{_label}{_arrow}</a>'
+    tbl += (
+        f'<div>Session</div><div>{_status_hdr}</div><div>Items</div><div>{_date_hdr}</div>'
         '<div></div><div></div><div></div>'
         '</div>'
     )
@@ -1581,6 +1605,21 @@ def page_prepare():
     session_id   = st.session_state["current_session_id"]
 
     items = get_backlog_items(session_id)
+
+    # ── Apply sort ────────────────────────────────────────────────────────────
+    _p_col = st.session_state.get("prep_sort_col")
+    _p_dir = st.session_state.get("prep_sort_dir", "asc")
+    if _p_col == "clarity":
+        _clarity_order = {"High": 1, "Moderate": 2, "Low": 3}
+        items = sorted(items,
+                       key=lambda it: _clarity_order.get(
+                           it.get("clarity_gradient", "").replace(" Clarity", ""), 99),
+                       reverse=(_p_dir == "desc"))
+    elif _p_col == "refinement":
+        _zone_order = {"Ideal": 1, "Too Vague": 2, "Over-Refined": 3}
+        items = sorted(items,
+                       key=lambda it: _zone_order.get(it.get("threshold_zone", ""), 99),
+                       reverse=(_p_dir == "desc"))
 
     # ── Handle pending item delete dialog ────────────────────────────────────
     if pending_del_id := st.session_state.pop("pending_item_delete_id", None):
@@ -2514,13 +2553,26 @@ def page_prepare():
         '<div style="background:#1e2a3a;color:#fff;padding:10px 16px;'
         'font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;'
         'display:grid;grid-template-columns:5fr 2fr 2fr 1fr 2fr 2fr 1.5fr 1.5fr;gap:8px">'
+    )
+    _plnk = 'color:#fff;text-decoration:none'
+    for _pc, _pl in (("clarity", "Clarity"), ("refinement", "Refinement")):
+        _pnew_dir = "desc" if (_p_col == _pc and _p_dir == "asc") else "asc"
+        _parrow   = (" ↑" if _p_dir == "asc" else " ↓") if _p_col == _pc else ""
+        _phref    = f'?{q}_prep_sort={_pc}&_prep_dir={_pnew_dir}'
+        if _pc == "clarity":
+            _clarity_hdr = f'<a href="{_phref}" target="_self" style="{_plnk}">{_pl}{_parrow}</a>'
+        else:
+            _refine_hdr  = f'<a href="{_phref}" target="_self" style="{_plnk}">{_pl}{_parrow}</a>'
+    tbl += (
         '<div><span class="th-tip">Item &#9432;'
         '<span class="tip-text">The backlog item being assessed</span>'
         '</span></div>'
-        '<div><span class="th-tip">Clarity &#9432;'
+        f'<div>{_clarity_hdr}'
+        '<span class="th-tip"> &#9432;'
         '<span class="tip-text">How clearly the item is written: High, Moderate, or Low</span>'
         '</span></div>'
-        '<div><span class="th-tip">Refinement &#9432;'
+        f'<div>{_refine_hdr}'
+        '<span class="th-tip"> &#9432;'
         '<span class="tip-text">How well-scoped the item is: Too Vague, Ideal, or Over-Refined</span>'
         '</span></div>'
         '<div><span class="th-tip">Gaps &#9432;'
@@ -3028,6 +3080,34 @@ def show_topnav():
             st.session_state["run_item_index"] = int(run_dot)
         except ValueError:
             pass
+        st.rerun()
+        return
+
+    # ── Handle session list sort ──────────────────────────────────────────────
+    sess_sort = st.query_params.get("_sess_sort", "")
+    if sess_sort:
+        sess_dir = st.query_params.get("_sess_dir", "asc")
+        for k in ("_sess_sort", "_sess_dir"):
+            try:
+                del st.query_params[k]
+            except Exception:
+                pass
+        st.session_state["sess_sort_col"] = sess_sort
+        st.session_state["sess_sort_dir"] = sess_dir
+        st.rerun()
+        return
+
+    # ── Handle prepare session sort ───────────────────────────────────────────
+    prep_sort = st.query_params.get("_prep_sort", "")
+    if prep_sort:
+        prep_dir = st.query_params.get("_prep_dir", "asc")
+        for k in ("_prep_sort", "_prep_dir"):
+            try:
+                del st.query_params[k]
+            except Exception:
+                pass
+        st.session_state["prep_sort_col"] = prep_sort
+        st.session_state["prep_sort_dir"] = prep_dir
         st.rerun()
         return
 
