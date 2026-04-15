@@ -784,7 +784,7 @@ def _render_mistakes_callout_html(text: str) -> str:
 
 
 def _render_checklist_group_html(group_text: str) -> str:
-    """Render one checklist group as styled HTML with coloured ✔/✗/? and blue questions."""
+    """Render one checklist group as styled HTML. ✔ green, ✗ red, ? orange icons; detail lines: green/red/blue."""
     html = ""
     last_icon = None  # track last checklist item type to gate blue questions
     for line in group_text.split("\n"):
@@ -830,7 +830,13 @@ def _render_checklist_group_html(group_text: str) -> str:
                     f'border-left:2px solid #a8d5b5;margin:4px 0 4px 20px;'
                     f'line-height:1.4">{_html.escape(q)}</div>'
                 )
-            elif q and last_icon in ("fail", "uncertain"):
+            elif q and last_icon == "fail":
+                html += (
+                    f'<div style="font-size:12px;color:#922b21;padding:3px 8px;'
+                    f'border-left:2px solid #f1948a;margin:4px 0 4px 20px;'
+                    f'line-height:1.4">{_html.escape(q)}</div>'
+                )
+            elif q and last_icon == "uncertain":
                 html += (
                     f'<div style="font-size:12px;color:#1565C0;padding:3px 8px;'
                     f'border-left:2px solid #90CAF9;margin:4px 0 4px 20px;'
