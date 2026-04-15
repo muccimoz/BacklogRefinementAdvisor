@@ -1352,6 +1352,18 @@ def page_teams():
             "- Use **Rename** or **Delete** from the team card for housekeeping\n"
             "- Create a separate team for each group you facilitate refinement with"
         )
+        try:
+            import os
+            _guide_path = os.path.join(os.path.dirname(__file__), "Backlog_Refinement_Guide.pdf")
+            with open(_guide_path, "rb") as _f:
+                st.download_button(
+                    label="Download Reference Guide (PDF)",
+                    data=_f.read(),
+                    file_name="Backlog_Refinement_Guide.pdf",
+                    mime="application/pdf",
+                )
+        except FileNotFoundError:
+            pass
 
     # ── Welcome screen (first-time users with no teams) ──────────────────────
     if not teams and not st.session_state.get("welcome_dismissed"):
