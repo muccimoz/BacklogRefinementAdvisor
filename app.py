@@ -2513,7 +2513,7 @@ def page_prepare():
         'box-shadow:0 1px 4px rgba(0,0,0,0.08);overflow:hidden;margin-top:8px">'
         '<div style="background:#1e2a3a;color:#fff;padding:10px 16px;'
         'font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;'
-        'display:grid;grid-template-columns:5fr 2fr 2fr 1fr 2fr 2fr 2.5fr;gap:8px">'
+        'display:grid;grid-template-columns:5fr 2fr 2fr 1fr 2fr 2fr 1.5fr 1.5fr;gap:8px">'
         '<div><span class="th-tip">Item &#9432;'
         '<span class="tip-text">The backlog item being assessed</span>'
         '</span></div>'
@@ -2533,6 +2533,7 @@ def page_prepare():
         '<span class="tip-text">Date Claude evaluated the item</span>'
         '</span></div>'
         '<div></div>'
+        '<div></div>'
         '</div>'
     )
 
@@ -2550,7 +2551,7 @@ def page_prepare():
 
         tbl += (
             f'<div class="item-row" style="display:grid;'
-            f'grid-template-columns:5fr 2fr 2fr 1fr 2fr 2fr 2.5fr;'
+            f'grid-template-columns:5fr 2fr 2fr 1fr 2fr 2fr 1.5fr 1.5fr;'
             f'padding:12px 16px;{border};align-items:center;font-size:13px">'
             f'<div style="font-weight:700;color:#1e2a3a">{title_s}</div>'
             f'<div>{_clarity_badge(clarity_short)}</div>'
@@ -2558,10 +2559,8 @@ def page_prepare():
             f'<div>{_gaps_badge_html(gaps, "gap")}</div>'
             f'<div>{_gaps_badge_html(uncertain, "uncertain")}</div>'
             f'<div style="color:#aaa;font-size:12px">{assessed_str}</div>'
-            f'<div style="display:flex;gap:8px">'
-            f'<a href="{edit_href}" target="_self" style="{btn_edit}">Edit</a>'
-            f'<a href="{delete_href}" target="_self" style="{btn_del}">Delete</a>'
-            f'</div>'
+            f'<div><a href="{edit_href}" target="_self" style="{btn_edit}">Edit</a></div>'
+            f'<div><a href="{delete_href}" target="_self" style="{btn_del}">Delete</a></div>'
             f'</div>'
         )
 
