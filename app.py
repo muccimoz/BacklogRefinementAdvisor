@@ -595,16 +595,16 @@ THRESHOLD_ZONE: [Too Vague / Ideal / Over-Refined]
 
 Rules for indented lines beneath each checklist item:
 - After a ✔ item: add exactly one brief indented line explaining why it passes. Never skip this.
-- After a ✗ or ? item: add 1-2 indented clarifying questions.
+- After a ✗ or ? item: add 1-2 indented observations or clarifying questions.
 - Never add indented lines for any other reason. Only ✔ items get a "why" line; only ✗ and ? items get questions.
 
 Example:
 ✔ Team can explain the item in their own words
     The title and description clearly articulate the user need and context.
 ✗ Major acceptance criteria have been identified
-    What specific acceptance criteria should be defined?
+    No acceptance criteria are present. What conditions must be met for this item to be considered done?
 ? Item is small enough to complete within a sprint
-    Has the team estimated the effort involved?]
+    The scope is unclear — this could span multiple sprints depending on implementation complexity.]
 
 ### 2. Acceptance Boundaries
 [Same format as above]
