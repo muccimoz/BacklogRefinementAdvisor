@@ -819,7 +819,7 @@ def _render_checklist_group_html(group_text: str) -> str:
             text = _html.escape(stripped[1:].strip())
             html += (
                 f'<div style="display:flex;gap:7px;align-items:flex-start;margin:5px 0;font-size:13px">'
-                f'<span style="color:#e67e22;flex-shrink:0">?</span>'
+                f'<span style="color:#1565C0;flex-shrink:0">?</span>'
                 f'<span style="color:#333;line-height:1.4">{text}</span></div>'
             )
         elif line.startswith(" ") or line.startswith("\t"):
