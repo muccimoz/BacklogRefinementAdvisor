@@ -2721,7 +2721,8 @@ def page_summary():
             "An overview of all outcomes from this session.\n\n"
             "- The outcome count bar at the top shows the breakdown at a glance\n"
             "- Use **Export CSV** to download the full results for sharing or record-keeping\n"
-            "- Use **Reopen Session** if you need to go back and change any outcomes"
+            "- Use **Continue Session →** to return to Session Review if the session is still in progress\n"
+        "- Use **Reopen Session** if the session is complete and you need to go back and change outcomes"
         )
 
     # ── Outcome count bar ─────────────────────────────────────────────────────
@@ -2734,11 +2735,19 @@ def page_summary():
 
     # ── Action buttons ────────────────────────────────────────────────────────
     st.write("")
-    _, btn_reopen, __ = st.columns([8, 2, 0.1])
-    if btn_reopen.button("Reopen Session", use_container_width=True):
-        update_session_status(session_id, "in_progress")
-        st.session_state["page"] = "run_session"
-        st.rerun()
+    _, btn_action, __ = st.columns([8, 2, 0.1])
+    if all_tagged:
+        if btn_action.button("Reopen Session", use_container_width=True):
+            update_session_status(session_id, "in_progress")
+            st.session_state["run_item_index"] = None
+            st.session_state["page"] = "run_session"
+            st.rerun()
+    else:
+        if btn_action.button("Continue Session →", type="primary",
+                             use_container_width=True):
+            st.session_state["run_item_index"] = None
+            st.session_state["page"] = "run_session"
+            st.rerun()
 
 
 
