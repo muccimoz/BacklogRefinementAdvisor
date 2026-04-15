@@ -1824,9 +1824,20 @@ def page_prepare():
                                     else:
                                         st.info("No issues found for that query.")
                                 else:
-                                    st.error(f"Jira query failed — HTTP {resp.status_code}: {resp.text[:300]}")
+                                    _status = resp.status_code
+                                    _friendly = {
+                                        400: "The JQL query may be invalid or contain an unrecognised field or value.",
+                                        401: "Authentication failed — check your Jira email and API token.",
+                                        403: "Access denied — your account may not have permission to query this project.",
+                                        404: "Jira URL not found — check the URL in your configuration.",
+                                    }.get(_status, "Jira returned an unexpected error. Check your configuration and try again.")
+                                    st.error(f"Could not fetch issues from Jira. {_friendly}")
+                                    with st.expander("Technical details"):
+                                        st.code(f"HTTP {_status}\n{resp.text[:500]}", language=None)
                             except Exception as e:
-                                st.error(f"Error fetching from Jira: {e}")
+                                st.error("Could not connect to Jira. Check your network connection and Jira URL.")
+                                with st.expander("Technical details"):
+                                    st.code(str(e), language=None)
 
             else:
                 # ── Step 2: Select issues ─────────────────────────────────
