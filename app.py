@@ -1584,7 +1584,10 @@ def page_sessions():
             "- **Complete** — all items have been reviewed and tagged with outcomes\n\n"
             "Open a Preparing session to add more items. "
             "Open an In Progress session to go to Session Review. "
-            "Open a Complete session to go to the Session Summary."
+            "Open a Complete session to go to the Session Summary.\n\n"
+            "**Session actions:**\n"
+            "- **Edit** — update the session name or date\n"
+            "- **Delete** — permanently removes the session and all its assessed items"
         )
 
     # ── Add Session form ──────────────────────────────────────────────────────
@@ -2840,7 +2843,8 @@ def page_run_session():
             "- Use **Prev** and **Next** to move between items, or click any progress dot "
             "to jump directly to that item\n"
             "- The progress dots at the top show which items have been tagged\n"
-            "- Tag each item with an outcome and add optional notes\n"
+            "- Tag each item with an outcome and add optional notes to capture key discussion points "
+            "— notes are saved when you navigate to the next item\n"
             "- You can revisit any item to change its outcome during the session\n\n"
             "**Outcome tags:**\n"
             "- **Ready for Sprint** — item is well-defined and can be pulled in\n"
